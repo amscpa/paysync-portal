@@ -1729,7 +1729,7 @@ function clientLogin() {
 }
 
 function clearAndReload() {
-  if (confirm('This will clear your browser's cached data and reload the page.\n\nNote: Any clients/employees you added through this browser (not via Firebase) will need to be re-added.\n\nContinue?')) {
+  if (confirm("This will clear your browser cached data and reload the page.\n\nNote: Any clients or employees added through this browser only (not via Firebase) will need to be re-added.\n\nContinue?")) {
     localStorage.removeItem('paysync');
     localStorage.removeItem('paysync_fb_config');
     window.location.reload();
@@ -2502,24 +2502,17 @@ function exportChange(subId) {
     td1Fed:'TD1 Federal ($)', td1Prov:'TD1 Provincial ($)', extraTax:'Extra Tax/Period ($)', rate:'Pay Rate'
   };
 
-  let csv = 'FIELD,OLD VALUE,NEW VALUE,EFFECTIVE DATE
-';
-  csv += '"Client","'+( client?.name||'')+'","",""
-';
-  csv += '"Employee","'+s.empName+'","",""
-';
-  csv += '"Submitted","'+s.submitted+'","",""
-';
-  csv += '"Reason","'+s.reason+'","",""
-';
-  csv += '"---","---","---","---"
-';
+  let csv = 'FIELD,OLD VALUE,NEW VALUE,EFFECTIVE DATE\n';
+  csv += '"Client","'+( client?.name||'')+'","",""\n';
+  csv += '"Employee","'+s.empName+'","",""\n';
+  csv += '"Submitted","'+s.submitted+'","",""\n';
+  csv += '"Reason","'+s.reason+'","",""\n';
+  csv += '"---","---","---","---"\n';
   Object.entries(chgs).forEach(([key,val]) => {
     const label = fieldNames[key]||key;
     const newDisp = key==='bankAcct' ? (val.newFull ? val.newFull : val.new) : val.new;
     const eff = key==='rate' ? (val.effectiveDate||'Immediately') : '';
-    csv += '"'+label+'","'+(val.old||'')+'","'+(newDisp||'')+'","'+eff+'"
-';
+    csv += '"'+label+'","'+(val.old||'')+'","'+(newDisp||'')+'","'+eff+'"\n';
   });
   downloadCSV(csv, 'emp-change-'+s.empName.replace(/\s+/g,'-')+'-'+Date.now()+'.csv');
 }
