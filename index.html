@@ -601,6 +601,9 @@
       <button class="btn btn-primary" onclick="clientLogin()">Access My Portal →</button>
       <div class="divider">or</div>
       <button class="btn btn-outline" onclick="adminLogin()" style="width:100%">🔐  Admin / Accountant Login</button>
+      <p style="text-align:center;margin-top:20px;font-size:12px;color:var(--ink-muted)">
+        Having trouble? <a href="#" onclick="clearAndReload()" style="color:var(--navy)">Clear cached data &amp; reload</a>
+      </p>
     </div>
   </div>
 </div>
@@ -1625,9 +1628,34 @@ function getSeedData() {
   };
 }
 
+function migrateData(raw) {
+  // Convert any top-level arrays to keyed objects (v1/v2 → v3+ format)
+  function toObj(arr) {
+    if (!arr) return {};
+    if (Array.isArray(arr)) {
+      const obj = {};
+      arr.forEach(item => { if (item && item.id) obj[item.id] = item; });
+      return obj;
+    }
+    return arr; // already an object
+  }
+  raw.clients     = toObj(raw.clients);
+  raw.employees   = toObj(raw.employees);
+  raw.submissions = toObj(raw.submissions);
+  return raw;
+}
+
 function getLocalData() {
-  const d = localStorage.getItem('paysync');
-  if (d) return JSON.parse(d);
+  try {
+    const d = localStorage.getItem('paysync');
+    if (d) {
+      const parsed = JSON.parse(d);
+      return migrateData(parsed);
+    }
+  } catch(e) {
+    console.warn('LocalStorage parse error, resetting:', e);
+    localStorage.removeItem('paysync');
+  }
   const seed = getSeedData();
   localStorage.setItem('paysync', JSON.stringify(seed));
   return seed;
@@ -1669,19 +1697,43 @@ function showPage(id) {
 //  LOGIN
 // ══════════════════════════════════════════════════════════════════════════
 function clientLogin() {
-  // refresh from storage first
-  db = usingFirebase ? db : getLocalData();
-  const code = document.getElementById('login-code').value.trim().toUpperCase();
-  const clients = db.clients ? Object.values(db.clients) : [];
-  const client = clients.find(c => c.code === code);
-  if (!client) {
+  try {
+    // Always re-read and migrate storage on login
+    if (!usingFirebase) {
+      db = getLocalData();
+    }
+    const code = document.getElementById('login-code').value.trim().toUpperCase();
+    if (!code) {
+      document.getElementById('login-error').textContent = 'Please enter your access code.';
+      document.getElementById('login-error').classList.add('show');
+      document.getElementById('login-code').classList.add('error');
+      return;
+    }
+    const clients = db.clients ? Object.values(db.clients) : [];
+    const client = clients.find(c => c.code === code);
+    if (!client) {
+      document.getElementById('login-error').textContent = 'Invalid code. Please contact your accountant.';
+      document.getElementById('login-error').classList.add('show');
+      document.getElementById('login-code').classList.add('error');
+      return;
+    }
+    document.getElementById('login-error').classList.remove('show');
+    document.getElementById('login-code').classList.remove('error');
+    currentClientId = client.id;
+    showPage('pg-client-home');
+  } catch(e) {
+    console.error('Login error:', e);
+    document.getElementById('login-error').textContent = 'Login error — please refresh the page and try again.';
     document.getElementById('login-error').classList.add('show');
-    document.getElementById('login-code').classList.add('error');
-    return;
   }
-  document.getElementById('login-error').classList.remove('show');
-  currentClientId = client.id;
-  showPage('pg-client-home');
+}
+
+function clearAndReload() {
+  if (confirm('This will clear your browser's cached data and reload the page.\n\nNote: Any clients/employees you added through this browser (not via Firebase) will need to be re-added.\n\nContinue?')) {
+    localStorage.removeItem('paysync');
+    localStorage.removeItem('paysync_fb_config');
+    window.location.reload();
+  }
 }
 
 function adminLogin() { showPage('pg-admin-login'); }
