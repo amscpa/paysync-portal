@@ -1077,7 +1077,7 @@
           <table class="submissions-table" id="roster-table">
             <thead>
               <tr>
-                <th>Name</th><th>Title</th><th>Type</th><th>Pay</th><th>Banking</th><th>Status</th>
+                <th>Name</th><th>Title</th><th>Type</th><th>Pay</th><th>Banking</th><th>Status</th><th>Actions</th>
               </tr>
             </thead>
             <tbody id="roster-tbody"></tbody>
@@ -1110,6 +1110,215 @@
     </div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════ UPDATE EMPLOYEE ══════════════════════════════════════════════ -->
+<div id="pg-update-employee" class="page">
+  <div class="topbar">
+    <div class="topbar-brand"><div class="topbar-logo">P</div><span class="topbar-name">Pay<span>Sync</span></span></div>
+    <div class="topbar-actions">
+      <span class="topbar-client-badge" id="client-badge-upd"></span>
+      <button class="btn-ghost-white" onclick="showPage('pg-view-employees')">← Back to Roster</button>
+    </div>
+  </div>
+  <div class="main-content fade-in">
+    <div class="breadcrumb">
+      <a href="#" onclick="showPage('pg-client-home')">Home</a> ›
+      <a href="#" onclick="showPage('pg-view-employees')">Roster</a> ›
+      Update Employee
+    </div>
+    <div class="page-header">
+      <div>
+        <h2 id="upd-emp-title">Update Employee</h2>
+        <p>Only fill in the sections that have changed. Leave others blank.</p>
+      </div>
+      <div class="info-chip" id="upd-emp-badge">Loading...</div>
+    </div>
+
+    <div class="alert alert-info">
+      <span class="alert-icon">ℹ️</span>
+      <div>Changes are submitted to your accountant for review and will be applied before the next payroll run. All changes are logged with a timestamp.</div>
+    </div>
+
+    <!-- CONTACT & ADDRESS -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <h3>📍 Contact &amp; Address Change</h3>
+        <span class="tag">Leave blank if unchanged</span>
+      </div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>New Email Address</label>
+            <input type="email" id="upd-email" placeholder="new@email.com">
+            <div class="help-text" id="upd-email-current"></div>
+          </div>
+          <div class="form-group">
+            <label>New Phone Number</label>
+            <input type="tel" id="upd-phone" placeholder="(403) 555-0100">
+            <div class="help-text" id="upd-phone-current"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>New Street Address</label>
+          <input type="text" id="upd-address" placeholder="123 New Street">
+          <div class="help-text" id="upd-address-current"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>City</label>
+            <input type="text" id="upd-city" placeholder="Calgary">
+          </div>
+          <div class="form-group">
+            <label>Province</label>
+            <select id="upd-province">
+              <option value="">Unchanged</option>
+              <option value="AB">Alberta</option>
+              <option value="BC">British Columbia</option>
+              <option value="MB">Manitoba</option>
+              <option value="NB">New Brunswick</option>
+              <option value="NL">Newfoundland &amp; Labrador</option>
+              <option value="NS">Nova Scotia</option>
+              <option value="ON">Ontario</option>
+              <option value="PE">PEI</option>
+              <option value="QC">Quebec</option>
+              <option value="SK">Saskatchewan</option>
+              <option value="NT">NWT</option>
+              <option value="NU">Nunavut</option>
+              <option value="YT">Yukon</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Postal Code</label>
+            <input type="text" id="upd-postal" placeholder="T2P 3R7" maxlength="7" oninput="formatPostal(this)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BANKING -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <h3>🏦 Banking Change</h3>
+        <span class="tag">Leave blank if unchanged</span>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-warn">
+          <span class="alert-icon">⚠️</span>
+          <div>If changing banking info, please provide ALL three fields (institution, transit, account) together. Partial banking updates cannot be processed.</div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>New Institution (Bank) #</label>
+            <input type="text" id="upd-bank-inst" placeholder="e.g. 010" maxlength="3" oninput="this.value=this.value.replace(/\D/g,'')">
+            <div class="help-text" id="upd-bank-inst-current"></div>
+          </div>
+          <div class="form-group">
+            <label>New Transit #</label>
+            <input type="text" id="upd-bank-transit" placeholder="e.g. 00152" maxlength="5" oninput="this.value=this.value.replace(/\D/g,'')">
+            <div class="help-text" id="upd-bank-transit-current"></div>
+          </div>
+          <div class="form-group">
+            <label>New Account #</label>
+            <input type="text" id="upd-bank-acct" placeholder="7–12 digits" maxlength="12" oninput="this.value=this.value.replace(/\D/g,'')">
+            <div class="help-text" id="upd-bank-acct-current"></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Account Type</label>
+            <select id="upd-bank-type">
+              <option value="">Unchanged</option>
+              <option value="chequing">Chequing</option>
+              <option value="savings">Savings</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:18px">
+            <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px">
+              <input type="checkbox" id="upd-bank-void" style="width:auto">
+              I confirm a void cheque or PAD form is available for this new account
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TD1 UPDATE -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <h3>📋 TD1 Update</h3>
+        <span class="tag">Leave blank if unchanged</span>
+      </div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>New TD1 Federal Claim Amount ($)</label>
+            <input type="number" id="upd-td1-fed" placeholder="Leave blank if unchanged" step="1" min="0">
+            <div class="help-text" id="upd-td1-fed-current"></div>
+          </div>
+          <div class="form-group">
+            <label>New TD1 Provincial Claim Amount ($)</label>
+            <input type="number" id="upd-td1-prov" placeholder="Leave blank if unchanged" step="1" min="0">
+            <div class="help-text" id="upd-td1-prov-current"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Additional Tax to Deduct Per Period ($)</label>
+          <input type="number" id="upd-extra-tax" placeholder="Leave blank if unchanged" step="0.01" min="0">
+          <div class="help-text" id="upd-extra-tax-current"></div>
+        </div>
+        <div class="alert alert-info" style="margin-top:8px">
+          <span class="alert-icon">ℹ️</span>
+          <div>TD1 changes should be accompanied by a new signed TD1 form. Please bring or email the signed form to your accountant.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAY RATE -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <h3>💰 Pay Rate Change</h3>
+        <span class="tag">Leave blank if unchanged</span>
+      </div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>New Rate</label>
+            <input type="number" id="upd-rate" placeholder="Leave blank if unchanged" step="0.01" min="0">
+            <div class="help-text" id="upd-rate-current"></div>
+          </div>
+          <div class="form-group">
+            <label>Effective Date</label>
+            <input type="date" id="upd-rate-date">
+            <div class="help-text">When does the new rate take effect?</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REASON & NOTES -->
+    <div class="card mb-24">
+      <div class="card-header"><h3>📝 Reason for Change</h3></div>
+      <div class="card-body">
+        <div class="form-group">
+          <label>Description of Changes <span class="req">*</span></label>
+          <textarea id="upd-reason" placeholder="e.g. Employee moved to new address, changed banks, annual raise effective Apr 1..." style="min-height:80px"></textarea>
+          <div class="field-error" id="err-upd-reason">Please describe what is changing.</div>
+        </div>
+        <div class="form-group">
+          <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:10px">
+            <input type="checkbox" id="upd-confirm" style="width:auto">
+            I confirm this information is accurate and authorized by the employee.
+          </label>
+          <div class="field-error" id="err-upd-confirm">Please confirm before submitting.</div>
+        </div>
+        <button class="btn btn-gold" onclick="submitEmployeeUpdate()" style="max-width:260px;padding:14px 24px;font-size:15px">
+          ✓ Submit Update Request
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <!-- ══════════════════════════════════════════════ SUCCESS ══════════════════════════════════════════════ -->
 <div id="pg-success" class="page">
@@ -1213,6 +1422,7 @@
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('tab-payroll')">Payroll Runs</button>
       <button class="admin-tab" onclick="switchTab('tab-employees')">New Employees</button>
+      <button class="admin-tab" onclick="switchTab('tab-changes')">Employee Changes <span id="changes-badge" style="background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px"></span></button>
       <button class="admin-tab" onclick="switchTab('tab-clients')">Client Overview</button>
     </div>
 
@@ -1244,6 +1454,27 @@
           <table class="submissions-table" id="admin-clients-table">
             <thead><tr><th>Client Name</th><th>Code</th><th>Employees</th><th>Last Submission</th><th>Status</th></tr></thead>
             <tbody id="admin-clients-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-changes" class="tab-content" style="display:none">
+      <div class="card">
+        <div class="card-body" style="padding:0;overflow-x:auto">
+          <table class="submissions-table" id="admin-changes-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Employee</th>
+                <th>Fields Changed</th>
+                <th>What Changed</th>
+                <th>Submitted</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-changes-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -1393,6 +1624,7 @@ function showPage(id) {
   if (id === 'pg-client-home')    loadClientHome();
   if (id === 'pg-payroll-run')    loadPayrollRun();
   if (id === 'pg-view-employees') loadRoster();
+  if (id === 'pg-update-employee') {} // loaded via openUpdateEmployee()
   if (id === 'pg-history')        loadHistory();
   if (id === 'pg-admin')          loadAdminDashboard();
   if (id === 'pg-admin-clients')  loadManageClients();
@@ -1763,19 +1995,146 @@ function loadRoster() {
   const emps  = db.employees ? Object.values(db.employees).filter(e=>e.clientId===currentClientId) : [];
   const tbody = document.getElementById('roster-tbody');
   tbody.innerHTML = '';
-  if (!emps.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees yet.</td></tr>'; return; }
+  if (!emps.length) { tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees yet.</td></tr>'; return; }
   emps.forEach(e => {
     const tr = document.createElement('tr');
+    const hasChanges = (db.submissions ? Object.values(db.submissions) : [])
+      .filter(s=>s.type==='update'&&s.empId===e.id&&s.status!=='done').length > 0;
     tr.innerHTML = `
-      <td><strong>${e.first} ${e.last}</strong><div class="text-small text-muted">${e.email||''}</div></td>
+      <td>
+        <strong>${e.first} ${e.last}</strong>
+        <div class="text-small text-muted">${e.email||'No email on file'}</div>
+        ${hasChanges ? '<span class="status-badge status-review" style="font-size:10px;margin-top:4px;display:inline-flex">Pending update</span>' : ''}
+      </td>
       <td>${e.title}</td>
       <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
       <td>${e.payType==='hourly'?'$'+e.rate+'/hr':'$'+Number(e.rate).toLocaleString()+'/yr'}</td>
-      <td><span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'On file':'Missing'}</span></td>
+      <td>
+        <span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'✓ On file':'⚠ Missing'}</span>
+      </td>
       <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>
+      <td>
+        <button class="btn btn-sm btn-outline" onclick="openUpdateEmployee('${e.id}')">✏ Update Info</button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+function openUpdateEmployee(empId) {
+  const emps = db.employees ? Object.values(db.employees) : [];
+  const emp  = emps.find(e=>e.id===empId);
+  if (!emp) return;
+
+  // Store which employee we're editing
+  window._updatingEmpId = empId;
+
+  // Set page title
+  document.getElementById('upd-emp-title').textContent = 'Update: '+emp.first+' '+emp.last;
+  document.getElementById('upd-emp-badge').textContent = emp.title+' · '+emp.type;
+  const cb = document.getElementById('client-badge-upd');
+  if (cb) cb.textContent = (db.clients&&Object.values(db.clients).find(c=>c.id===currentClientId)?.name)||'';
+
+  // Show current values as hints
+  const hint = (id, val) => { const el=document.getElementById(id); if(el&&val) el.textContent='Current: '+val; };
+  hint('upd-email-current',    emp.email||'Not on file');
+  hint('upd-phone-current',    emp.phone||'Not on file');
+  hint('upd-address-current',  emp.address ? emp.address+', '+emp.city+' '+emp.province+' '+emp.postal : 'Not on file');
+  hint('upd-bank-inst-current',emp.bankInst    ? 'Current: '+emp.bankInst    : 'Not on file');
+  hint('upd-bank-transit-current', emp.bankTransit ? 'Current: '+emp.bankTransit : 'Not on file');
+  hint('upd-bank-acct-current',    emp.bankAcct    ? 'Current (masked): '+emp.bankAcct : 'Not on file');
+  hint('upd-td1-fed-current',  emp.td1Fed   ? 'Current: $'+emp.td1Fed   : 'Not set');
+  hint('upd-td1-prov-current', emp.td1Prov  ? 'Current: $'+emp.td1Prov  : 'Not set');
+  hint('upd-extra-tax-current',emp.extraTax ? 'Current: $'+emp.extraTax : 'None');
+  hint('upd-rate-current',     emp.rate     ? 'Current: $'+emp.rate+(emp.payType==='hourly'?'/hr':'/yr') : '');
+
+  // Clear all inputs
+  ['upd-email','upd-phone','upd-address','upd-city','upd-postal',
+   'upd-bank-inst','upd-bank-transit','upd-bank-acct',
+   'upd-td1-fed','upd-td1-prov','upd-extra-tax','upd-rate','upd-rate-date','upd-reason'
+  ].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('upd-province').value='';
+  document.getElementById('upd-bank-type').value='';
+  const bc=document.getElementById('upd-bank-void'); if(bc) bc.checked=false;
+  const uc=document.getElementById('upd-confirm');  if(uc) uc.checked=false;
+
+  showPage('pg-update-employee');
+}
+
+async function submitEmployeeUpdate() {
+  const reason = document.getElementById('upd-reason').value.trim();
+  const confirm= document.getElementById('upd-confirm').checked;
+  let valid = true;
+  if (!reason)   { showErr('err-upd-reason','upd-reason');   valid=false; } else clearErr('err-upd-reason','upd-reason');
+  if (!confirm)  { showErr('err-upd-confirm','upd-confirm'); valid=false; } else clearErr('err-upd-confirm','upd-confirm');
+  if (!valid) return;
+
+  const empId = window._updatingEmpId;
+  const emps  = db.employees ? Object.values(db.employees) : [];
+  const emp   = emps.find(e=>e.id===empId);
+  if (!emp) return;
+
+  // Build change log — only include fields that were filled in
+  const changes = {};
+  const v = id => document.getElementById(id)?.value?.trim();
+
+  if (v('upd-email'))       changes.email     = { old: emp.email||'',        new: v('upd-email') };
+  if (v('upd-phone'))       changes.phone     = { old: emp.phone||'',        new: v('upd-phone') };
+  if (v('upd-address'))     changes.address   = { old: emp.address||'',      new: v('upd-address') };
+  if (v('upd-city'))        changes.city      = { old: emp.city||'',         new: v('upd-city') };
+  if (v('upd-province'))    changes.province  = { old: emp.province||'',     new: v('upd-province') };
+  if (v('upd-postal'))      changes.postal    = { old: emp.postal||'',       new: v('upd-postal') };
+
+  // Banking — only if all 3 are provided
+  const bi=v('upd-bank-inst'), bt=v('upd-bank-transit'), ba=v('upd-bank-acct');
+  if (bi||bt||ba) {
+    if (!bi||!bt||!ba) {
+      alert('Banking changes require all three fields: Institution #, Transit #, and Account #.');
+      return;
+    }
+    changes.bankInst    = { old: emp.bankInst||'',    new: bi };
+    changes.bankTransit = { old: emp.bankTransit||'', new: bt };
+    changes.bankAcct    = { old: emp.bankAcct||'',    new: '****'+ba.slice(-3), newFull: ba };
+    if (v('upd-bank-type'))
+      changes.bankType  = { old: emp.bankType||'',    new: v('upd-bank-type') };
+  }
+
+  if (v('upd-td1-fed'))    changes.td1Fed    = { old: emp.td1Fed||'',    new: v('upd-td1-fed') };
+  if (v('upd-td1-prov'))   changes.td1Prov   = { old: emp.td1Prov||'',   new: v('upd-td1-prov') };
+  if (v('upd-extra-tax'))  changes.extraTax  = { old: emp.extraTax||'0', new: v('upd-extra-tax') };
+  if (v('upd-rate')) {
+    changes.rate       = { old: emp.rate||'', new: v('upd-rate'), effectiveDate: v('upd-rate-date')||'Immediately' };
+  }
+
+  if (Object.keys(changes).length === 0) {
+    alert('No changes detected. Please fill in at least one field you want to update.');
+    return;
+  }
+
+  // Submit as a change-request submission
+  const subId = 'upd'+Date.now();
+  if (!db.submissions) db.submissions = {};
+  db.submissions[subId] = {
+    id: subId,
+    type: 'update',
+    clientId: currentClientId,
+    empId: empId,
+    empName: emp.first+' '+emp.last,
+    submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
+    submittedTime: new Date().toISOString(),
+    status: 'new',
+    reason: reason,
+    changes: changes,
+    changeCount: Object.keys(changes).length,
+    note: Object.keys(changes).length+' field(s) changed: '+Object.keys(changes).join(', ')
+  };
+
+  await saveData(db);
+
+  document.getElementById('success-title').textContent = 'Update Submitted!';
+  document.getElementById('success-msg').textContent =
+    Object.keys(changes).length+' change(s) for '+emp.first+' '+emp.last+' sent to your accountant. They will apply the updates before the next payroll run.';
+  showPage('pg-success');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1788,8 +2147,8 @@ function loadHistory() {
   if (!subs.length) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--ink-muted)">No submissions yet.</td></tr>'; return; }
   [...subs].reverse().forEach(s => {
     const tr = document.createElement('tr');
-    const type   = s.type==='payroll' ? 'Payroll Run' : 'New Employee';
-    const period = s.type==='payroll' ? s.period : s.empName+' starts '+s.startDate;
+    const type   = s.type==='payroll' ? 'Payroll Run' : s.type==='update' ? '✏ Info Update' : 'New Employee';
+    const period = s.type==='payroll' ? s.period : s.type==='update' ? s.empName+' ('+s.changeCount+' change(s))' : s.empName+' starts '+s.startDate;
     const stCls  = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
     const stLbl  = s.status==='done'?'Processed':s.status==='review'?'Under Review':'Received';
     tr.innerHTML = `<td>${type}</td><td>${period}</td><td>${s.submitted}</td>
@@ -1811,10 +2170,15 @@ function loadAdminDashboard() {
   const allSubs     = db.submissions ? Object.values(db.submissions) : [];
   const payrolls    = allSubs.filter(s=>s.type==='payroll');
   const newEmps     = allSubs.filter(s=>s.type==='employee');
+  const empChanges  = allSubs.filter(s=>s.type==='update'&&s.status!=='done');
   const pending     = allSubs.filter(s=>s.status!=='done');
   const flagged     = allSubs.filter(s=>s.flags>0);
   const clients     = db.clients    ? Object.values(db.clients)    : [];
   const syncStatus  = usingFirebase ? '<span style="color:var(--teal)">Cloud Sync ON</span>' : '<span style="color:var(--gold-dk)">Local Only</span>';
+
+  // Update changes badge
+  const changesBadge = document.getElementById('changes-badge');
+  if (changesBadge) changesBadge.textContent = empChanges.length > 0 ? empChanges.length : '';
 
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card accent-navy">
@@ -1833,9 +2197,9 @@ function loadAdminDashboard() {
       <div class="stat-sub">Onboarding submissions</div>
     </div>
     <div class="stat-card accent-red">
-      <div class="stat-label">OT Flags</div>
-      <div class="stat-value">${flagged.length}</div>
-      <div class="stat-sub">Overtime alerts</div>
+      <div class="stat-label">Employee Changes</div>
+      <div class="stat-value">${empChanges.length}</div>
+      <div class="stat-sub">Pending updates to apply</div>
     </div>
   `;
 
@@ -1901,8 +2265,131 @@ function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
   document.getElementById(id).style.display='block';
   document.querySelectorAll('.admin-tab').forEach((b,i)=>{
-    b.classList.toggle('active',['tab-payroll','tab-employees','tab-clients'][i]===id);
+    b.classList.toggle('active',['tab-payroll','tab-employees','tab-changes','tab-clients'][i]===id);
   });
+  if (id==='tab-changes') loadChangesTab();
+}
+
+function loadChangesTab() {
+  const allSubs  = db.submissions ? Object.values(db.submissions) : [];
+  const changes  = allSubs.filter(s=>s.type==='update').sort((a,b)=>new Date(b.submittedTime||b.submitted)-new Date(a.submittedTime||a.submitted));
+  const clients  = db.clients ? Object.values(db.clients) : [];
+  const tbody    = document.getElementById('admin-changes-tbody');
+  tbody.innerHTML = '';
+
+  if (!changes.length) {
+    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--ink-muted)">No employee change requests yet.</td></tr>';
+    return;
+  }
+
+  changes.forEach(s => {
+    const client  = clients.find(c=>c.id===s.clientId);
+    const stCls   = s.status==='done'?'status-done':'status-new';
+    const stLbl   = s.status==='done'?'Applied':'Pending';
+    const chgs    = s.changes || {};
+    const fieldNames = {
+      email:'Email', phone:'Phone', address:'Address', city:'City', province:'Province', postal:'Postal',
+      bankInst:'Bank Institution', bankTransit:'Bank Transit', bankAcct:'Bank Account', bankType:'Account Type',
+      td1Fed:'TD1 Federal', td1Prov:'TD1 Provincial', extraTax:'Extra Tax', rate:'Pay Rate'
+    };
+
+    // Build change summary HTML
+    const changeRows = Object.entries(chgs).map(([key, val]) => {
+      const label = fieldNames[key] || key;
+      const oldVal = val.old || '—';
+      const newVal = key==='rate' ? '$'+val.new+(val.effectiveDate?' (eff. '+val.effectiveDate+')':'') :
+                     key==='bankAcct' ? '****'+val.newFull?.slice(-3)||val.new : val.new;
+      return '<div style="font-size:12px;margin-bottom:3px"><strong>'+label+':</strong> <span style="color:var(--ink-muted);text-decoration:line-through">'+oldVal+'</span> → <span style="color:var(--teal);font-weight:600">'+newVal+'</span></div>';
+    }).join('');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${client?.name||''}</strong></td>
+      <td><strong>${s.empName}</strong><div class="text-small text-muted">${s.reason||''}</div></td>
+      <td><span class="status-badge status-review">${s.changeCount||Object.keys(chgs).length} field(s)</span></td>
+      <td style="min-width:280px">${changeRows}</td>
+      <td style="white-space:nowrap">${s.submitted}</td>
+      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${stLbl}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-teal" onclick="applyEmpChange('${s.id}')">Apply &amp; Done</button>
+        <button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="exportChange('${s.id}')">Export</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function applyEmpChange(subId) {
+  const subs = db.submissions ? Object.values(db.submissions) : [];
+  const s    = subs.find(x=>x.id===subId);
+  if (!s||!s.changes) return;
+
+  // Apply changes to the employee record
+  const emps = db.employees ? Object.values(db.employees) : [];
+  const emp  = emps.find(e=>e.id===s.empId);
+  if (emp && db.employees) {
+    const chgs = s.changes;
+    if (chgs.email)       { emp.email       = chgs.email.new; }
+    if (chgs.phone)       { emp.phone       = chgs.phone.new; }
+    if (chgs.address)     { emp.address     = chgs.address.new; }
+    if (chgs.city)        { emp.city        = chgs.city.new; }
+    if (chgs.province)    { emp.province    = chgs.province.new; }
+    if (chgs.postal)      { emp.postal      = chgs.postal.new; }
+    if (chgs.bankInst)    { emp.bankInst    = chgs.bankInst.new;    emp.banking = true; }
+    if (chgs.bankTransit) { emp.bankTransit = chgs.bankTransit.new; }
+    if (chgs.bankAcct)    { emp.bankAcct    = chgs.bankAcct.new; }
+    if (chgs.bankType)    { emp.bankType    = chgs.bankType.new; }
+    if (chgs.td1Fed)      { emp.td1Fed      = chgs.td1Fed.new;   emp.td1 = true; }
+    if (chgs.td1Prov)     { emp.td1Prov     = chgs.td1Prov.new; }
+    if (chgs.extraTax)    { emp.extraTax    = chgs.extraTax.new; }
+    if (chgs.rate)        { emp.rate        = parseFloat(chgs.rate.new); }
+    db.employees[emp.id] = emp;
+  }
+
+  // Mark submission done
+  if (db.submissions[subId]) db.submissions[subId].status = 'done';
+  else Object.values(db.submissions).forEach(x=>{ if(x.id===subId) x.status='done'; });
+
+  await saveData(db);
+  loadChangesTab();
+  // Refresh badge
+  const pending = Object.values(db.submissions||{}).filter(s=>s.type==='update'&&s.status!=='done').length;
+  const badge = document.getElementById('changes-badge');
+  if (badge) badge.textContent = pending > 0 ? pending : '';
+}
+
+function exportChange(subId) {
+  const subs  = db.submissions ? Object.values(db.submissions) : [];
+  const s     = subs.find(x=>x.id===subId);
+  if (!s) return;
+  const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
+  const chgs   = s.changes || {};
+  const fieldNames = {
+    email:'Email', phone:'Phone', address:'Street Address', city:'City', province:'Province', postal:'Postal Code',
+    bankInst:'Bank Institution #', bankTransit:'Bank Transit #', bankAcct:'Bank Account # (masked)', bankType:'Account Type',
+    td1Fed:'TD1 Federal ($)', td1Prov:'TD1 Provincial ($)', extraTax:'Extra Tax/Period ($)', rate:'Pay Rate'
+  };
+
+  let csv = 'FIELD,OLD VALUE,NEW VALUE,EFFECTIVE DATE
+';
+  csv += '"Client","'+( client?.name||'')+'","",""
+';
+  csv += '"Employee","'+s.empName+'","",""
+';
+  csv += '"Submitted","'+s.submitted+'","",""
+';
+  csv += '"Reason","'+s.reason+'","",""
+';
+  csv += '"---","---","---","---"
+';
+  Object.entries(chgs).forEach(([key,val]) => {
+    const label = fieldNames[key]||key;
+    const newDisp = key==='bankAcct' ? (val.newFull ? val.newFull : val.new) : val.new;
+    const eff = key==='rate' ? (val.effectiveDate||'Immediately') : '';
+    csv += '"'+label+'","'+(val.old||'')+'","'+(newDisp||'')+'","'+eff+'"
+';
+  });
+  downloadCSV(csv, 'emp-change-'+s.empName.replace(/\s+/g,'-')+'-'+Date.now()+'.csv');
 }
 
 async function markDone(subId) {
