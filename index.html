@@ -6,12 +6,6 @@
 <title>PaySync — Payroll Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-  window._fbModules = { initializeApp, getDatabase, ref, set, get, onValue, remove };
-</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -263,11 +257,10 @@
   /* ── CLIENT MENU ── */
   .client-menu {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 20px;
     margin-top: 28px;
   }
-  @media (max-width: 900px) { .client-menu { grid-template-columns: 1fr 1fr; } }
   .menu-card {
     background: var(--surface);
     border: 1.5px solid var(--border);
@@ -291,7 +284,6 @@
   .menu-card:hover::before { transform: scaleX(1); }
   .menu-card.gold::before { background: var(--gold); }
   .menu-card.teal::before { background: var(--teal); }
-  .menu-card.purple::before { background: #7c3aed; }
   .menu-icon {
     width: 52px; height: 52px;
     border-radius: 12px;
@@ -601,9 +593,6 @@
       <button class="btn btn-primary" onclick="clientLogin()">Access My Portal →</button>
       <div class="divider">or</div>
       <button class="btn btn-outline" onclick="adminLogin()" style="width:100%">🔐  Admin / Accountant Login</button>
-      <p style="text-align:center;margin-top:20px;font-size:12px;color:var(--ink-muted)">
-        Having trouble? <a href="#" onclick="clearAndReload()" style="color:var(--navy)">Clear cached data &amp; reload</a>
-      </p>
     </div>
   </div>
 </div>
@@ -673,13 +662,7 @@
         <div class="menu-icon teal">👤</div>
         <span class="menu-arrow">→</span>
         <h3>Add New Employee</h3>
-        <p>Onboard a new hire — personal info, SIN, banking details, and TD1 elections in one form.</p>
-      </div>
-      <div class="menu-card purple" onclick="showPage('pg-pick-employee')">
-        <div class="menu-icon" style="background:#ede9fe">✏️</div>
-        <span class="menu-arrow">→</span>
-        <h3>Update Employee Info</h3>
-        <p>Change banking details, address, TD1 amounts, pay rate, or contact info for an existing employee.</p>
+        <p>Onboard a new hire — personal info, SIN, banking details, and TD1 elections collected in one form.</p>
       </div>
       <div class="menu-card" onclick="showPage('pg-view-employees')">
         <div class="menu-icon navy">👥</div>
@@ -1088,7 +1071,7 @@
           <table class="submissions-table" id="roster-table">
             <thead>
               <tr>
-                <th>Name</th><th>Title</th><th>Type</th><th>Pay</th><th>Banking</th><th>Status</th><th>Actions</th>
+                <th>Name</th><th>Title</th><th>Type</th><th>Pay</th><th>Banking</th><th>Status</th>
               </tr>
             </thead>
             <tbody id="roster-tbody"></tbody>
@@ -1122,239 +1105,6 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════ PICK EMPLOYEE TO UPDATE ══════════════════════════════════════════════ -->
-<div id="pg-pick-employee" class="page">
-  <div class="topbar">
-    <div class="topbar-brand"><div class="topbar-logo">P</div><span class="topbar-name">Pay<span>Sync</span></span></div>
-    <div class="topbar-actions">
-      <span class="topbar-client-badge" id="client-badge-pick"></span>
-      <button class="btn-ghost-white" onclick="showPage('pg-client-home')">← Back</button>
-    </div>
-  </div>
-  <div class="main-content fade-in">
-    <div class="breadcrumb">
-      <a href="#" onclick="showPage('pg-client-home')">Home</a> › Update Employee Info
-    </div>
-    <div class="page-header">
-      <div>
-        <h2>Which employee needs updating?</h2>
-        <p>Select the employee whose information has changed.</p>
-      </div>
-    </div>
-    <div id="pick-emp-list" style="display:flex;flex-direction:column;gap:12px;max-width:640px"></div>
-  </div>
-</div>
-
-
-<!-- ══════════════════════════════════════════════ UPDATE EMPLOYEE ══════════════════════════════════════════════ -->
-<div id="pg-update-employee" class="page">
-  <div class="topbar">
-    <div class="topbar-brand"><div class="topbar-logo">P</div><span class="topbar-name">Pay<span>Sync</span></span></div>
-    <div class="topbar-actions">
-      <span class="topbar-client-badge" id="client-badge-upd"></span>
-      <button class="btn-ghost-white" onclick="showPage('pg-view-employees')">← Back to Roster</button>
-    </div>
-  </div>
-  <div class="main-content fade-in">
-    <div class="breadcrumb">
-      <a href="#" onclick="showPage('pg-client-home')">Home</a> ›
-      <a href="#" onclick="showPage('pg-view-employees')">Roster</a> ›
-      Update Employee
-    </div>
-    <div class="page-header">
-      <div>
-        <h2 id="upd-emp-title">Update Employee</h2>
-        <p>Only fill in the sections that have changed. Leave others blank.</p>
-      </div>
-      <div class="info-chip" id="upd-emp-badge">Loading...</div>
-    </div>
-
-    <div class="alert alert-info">
-      <span class="alert-icon">ℹ️</span>
-      <div>Changes are submitted to your accountant for review and will be applied before the next payroll run. All changes are logged with a timestamp.</div>
-    </div>
-
-    <!-- CONTACT & ADDRESS -->
-    <div class="card mb-24">
-      <div class="card-header">
-        <h3>📍 Contact &amp; Address Change</h3>
-        <span class="tag">Leave blank if unchanged</span>
-      </div>
-      <div class="card-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label>New Email Address</label>
-            <input type="email" id="upd-email" placeholder="new@email.com">
-            <div class="help-text" id="upd-email-current"></div>
-          </div>
-          <div class="form-group">
-            <label>New Phone Number</label>
-            <input type="tel" id="upd-phone" placeholder="(403) 555-0100">
-            <div class="help-text" id="upd-phone-current"></div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>New Street Address</label>
-          <input type="text" id="upd-address" placeholder="123 New Street">
-          <div class="help-text" id="upd-address-current"></div>
-        </div>
-        <div class="form-row-3">
-          <div class="form-group">
-            <label>City</label>
-            <input type="text" id="upd-city" placeholder="Calgary">
-          </div>
-          <div class="form-group">
-            <label>Province</label>
-            <select id="upd-province">
-              <option value="">Unchanged</option>
-              <option value="AB">Alberta</option>
-              <option value="BC">British Columbia</option>
-              <option value="MB">Manitoba</option>
-              <option value="NB">New Brunswick</option>
-              <option value="NL">Newfoundland &amp; Labrador</option>
-              <option value="NS">Nova Scotia</option>
-              <option value="ON">Ontario</option>
-              <option value="PE">PEI</option>
-              <option value="QC">Quebec</option>
-              <option value="SK">Saskatchewan</option>
-              <option value="NT">NWT</option>
-              <option value="NU">Nunavut</option>
-              <option value="YT">Yukon</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Postal Code</label>
-            <input type="text" id="upd-postal" placeholder="T2P 3R7" maxlength="7" oninput="formatPostal(this)">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- BANKING -->
-    <div class="card mb-24">
-      <div class="card-header">
-        <h3>🏦 Banking Change</h3>
-        <span class="tag">Leave blank if unchanged</span>
-      </div>
-      <div class="card-body">
-        <div class="alert alert-warn">
-          <span class="alert-icon">⚠️</span>
-          <div>If changing banking info, please provide ALL three fields (institution, transit, account) together. Partial banking updates cannot be processed.</div>
-        </div>
-        <div class="form-row-3">
-          <div class="form-group">
-            <label>New Institution (Bank) #</label>
-            <input type="text" id="upd-bank-inst" placeholder="e.g. 010" maxlength="3" oninput="this.value=this.value.replace(/\D/g,'')">
-            <div class="help-text" id="upd-bank-inst-current"></div>
-          </div>
-          <div class="form-group">
-            <label>New Transit #</label>
-            <input type="text" id="upd-bank-transit" placeholder="e.g. 00152" maxlength="5" oninput="this.value=this.value.replace(/\D/g,'')">
-            <div class="help-text" id="upd-bank-transit-current"></div>
-          </div>
-          <div class="form-group">
-            <label>New Account #</label>
-            <input type="text" id="upd-bank-acct" placeholder="7–12 digits" maxlength="12" oninput="this.value=this.value.replace(/\D/g,'')">
-            <div class="help-text" id="upd-bank-acct-current"></div>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Account Type</label>
-            <select id="upd-bank-type">
-              <option value="">Unchanged</option>
-              <option value="chequing">Chequing</option>
-              <option value="savings">Savings</option>
-            </select>
-          </div>
-          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:18px">
-            <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:10px">
-              <input type="checkbox" id="upd-bank-void" style="width:auto">
-              I confirm a void cheque or PAD form is available for this new account
-            </label>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TD1 UPDATE -->
-    <div class="card mb-24">
-      <div class="card-header">
-        <h3>📋 TD1 Update</h3>
-        <span class="tag">Leave blank if unchanged</span>
-      </div>
-      <div class="card-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label>New TD1 Federal Claim Amount ($)</label>
-            <input type="number" id="upd-td1-fed" placeholder="Leave blank if unchanged" step="1" min="0">
-            <div class="help-text" id="upd-td1-fed-current"></div>
-          </div>
-          <div class="form-group">
-            <label>New TD1 Provincial Claim Amount ($)</label>
-            <input type="number" id="upd-td1-prov" placeholder="Leave blank if unchanged" step="1" min="0">
-            <div class="help-text" id="upd-td1-prov-current"></div>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Additional Tax to Deduct Per Period ($)</label>
-          <input type="number" id="upd-extra-tax" placeholder="Leave blank if unchanged" step="0.01" min="0">
-          <div class="help-text" id="upd-extra-tax-current"></div>
-        </div>
-        <div class="alert alert-info" style="margin-top:8px">
-          <span class="alert-icon">ℹ️</span>
-          <div>TD1 changes should be accompanied by a new signed TD1 form. Please bring or email the signed form to your accountant.</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PAY RATE -->
-    <div class="card mb-24">
-      <div class="card-header">
-        <h3>💰 Pay Rate Change</h3>
-        <span class="tag">Leave blank if unchanged</span>
-      </div>
-      <div class="card-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label>New Rate</label>
-            <input type="number" id="upd-rate" placeholder="Leave blank if unchanged" step="0.01" min="0">
-            <div class="help-text" id="upd-rate-current"></div>
-          </div>
-          <div class="form-group">
-            <label>Effective Date</label>
-            <input type="date" id="upd-rate-date">
-            <div class="help-text">When does the new rate take effect?</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- REASON & NOTES -->
-    <div class="card mb-24">
-      <div class="card-header"><h3>📝 Reason for Change</h3></div>
-      <div class="card-body">
-        <div class="form-group">
-          <label>Description of Changes <span class="req">*</span></label>
-          <textarea id="upd-reason" placeholder="e.g. Employee moved to new address, changed banks, annual raise effective Apr 1..." style="min-height:80px"></textarea>
-          <div class="field-error" id="err-upd-reason">Please describe what is changing.</div>
-        </div>
-        <div class="form-group">
-          <label style="text-transform:none;letter-spacing:0;font-weight:400;font-size:14px;cursor:pointer;display:flex;align-items:center;gap:10px">
-            <input type="checkbox" id="upd-confirm" style="width:auto">
-            I confirm this information is accurate and authorized by the employee.
-          </label>
-          <div class="field-error" id="err-upd-confirm">Please confirm before submitting.</div>
-        </div>
-        <button class="btn btn-gold" onclick="submitEmployeeUpdate()" style="max-width:260px;padding:14px 24px;font-size:15px">
-          ✓ Submit Update Request
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-
 <!-- ══════════════════════════════════════════════ SUCCESS ══════════════════════════════════════════════ -->
 <div id="pg-success" class="page">
   <div class="topbar">
@@ -1378,8 +1128,7 @@
   <div class="topbar">
     <div class="topbar-brand"><div class="topbar-logo">P</div><span class="topbar-name">Pay<span>Sync</span> <span style="font-size:12px;background:var(--gold);border-radius:4px;padding:2px 8px;margin-left:6px">ADMIN</span></span></div>
     <div class="topbar-actions">
-      <button class="btn-ghost-white btn-sm" onclick="exportAllEmployees()">⬇ All Employees</button>
-      <button class="btn-ghost-white btn-sm" onclick="exportAll()">⬇ Full Export</button>
+      <button class="btn-ghost-white btn-sm" onclick="exportAll()">⬇ Export All (CSV)</button>
       <button class="btn-ghost-white" onclick="logout()">Sign Out</button>
     </div>
   </div>
@@ -1392,64 +1141,6 @@
       <button class="btn btn-gold btn-sm" onclick="showPage('pg-admin-clients')">Manage Clients →</button>
     </div>
 
-    <!-- Firebase Setup Banner -->
-    <div id="firebase-setup-banner" class="alert alert-warn mb-24" style="display:none">
-      <span class="alert-icon">&#9729;&#65039;</span>
-      <div style="flex:1">
-        <strong>Cloud Sync Not Configured</strong> &mdash; Currently using browser-only storage. Clients cannot submit from their own computers yet.
-        <button class="btn btn-sm btn-gold" style="margin-left:16px" onclick="showFirebaseSetup()">Configure Cloud Sync &rarr;</button>
-      </div>
-    </div>
-
-    <!-- Firebase Config Modal -->
-    <div id="firebase-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">
-      <div class="card" style="width:560px;max-width:95vw;max-height:90vh;overflow-y:auto">
-        <div class="card-header">
-          <h3>Configure Cloud Sync (Firebase)</h3>
-          <button onclick="closeFirebaseSetup()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-muted)">x</button>
-        </div>
-        <div class="card-body">
-          <div class="alert alert-info" style="margin-bottom:20px">
-            <span class="alert-icon">i</span>
-            <div>Firebase is free from Google. Once set up, your clients submit from their computers and you see it instantly on yours. Takes about 5 minutes.</div>
-          </div>
-          <div class="section-title">Step 1 - Create Firebase Project</div>
-          <ol style="font-size:13px;line-height:2.2;color:var(--ink-soft);padding-left:20px;margin-bottom:20px">
-            <li>Go to <a href="https://console.firebase.google.com" target="_blank" style="color:var(--navy)">console.firebase.google.com</a> and sign in with Google</li>
-            <li>Click <strong>Add project</strong>, name it "paysync", click through</li>
-            <li>In your project, click <strong>Build &gt; Realtime Database</strong> in the left menu</li>
-            <li>Click <strong>Create Database</strong>, choose your region, start in <strong>Test mode</strong></li>
-            <li>Copy your <strong>Database URL</strong> (e.g. https://paysync-xxxxx-default-rtdb.firebaseio.com)</li>
-            <li>Go to <strong>Project Settings (gear icon)</strong> &gt; Your apps &gt; click the Web icon (&lt;/&gt;) &gt; register app</li>
-            <li>Copy the <strong>apiKey</strong> and <strong>projectId</strong> from the firebaseConfig shown</li>
-          </ol>
-          <div class="section-title">Step 2 - Paste Your Credentials</div>
-          <div class="form-group">
-            <label>API Key <span class="req">*</span></label>
-            <input type="text" id="fb-apikey" placeholder="AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXX">
-          </div>
-          <div class="form-group">
-            <label>Project ID <span class="req">*</span></label>
-            <input type="text" id="fb-projectid" placeholder="paysync-xxxxx">
-          </div>
-          <div class="form-group">
-            <label>Database URL <span class="req">*</span></label>
-            <input type="text" id="fb-dburl" placeholder="https://paysync-xxxxx-default-rtdb.firebaseio.com">
-          </div>
-          <div id="fb-error" class="alert alert-error" style="display:none">
-            <span class="alert-icon">!</span><div id="fb-error-text">Could not connect. Check your credentials and make sure Test mode is enabled.</div>
-          </div>
-          <div id="fb-success" class="alert alert-success" style="display:none">
-            <span class="alert-icon">ok</span><div>Connected! Cloud sync is now active. Refreshing...</div>
-          </div>
-          <div class="flex gap-12 mt-24">
-            <button class="btn btn-outline" onclick="closeFirebaseSetup()">Cancel</button>
-            <button class="btn btn-teal" onclick="saveFirebaseConfig()" id="fb-save-btn">Test and Save Connection</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div class="stats-grid" id="stats-grid">
       <!-- filled by JS -->
     </div>
@@ -1457,7 +1148,6 @@
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchTab('tab-payroll')">Payroll Runs</button>
       <button class="admin-tab" onclick="switchTab('tab-employees')">New Employees</button>
-      <button class="admin-tab" onclick="switchTab('tab-changes')">Employee Changes <span id="changes-badge" style="background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px"></span></button>
       <button class="admin-tab" onclick="switchTab('tab-clients')">Client Overview</button>
     </div>
 
@@ -1489,27 +1179,6 @@
           <table class="submissions-table" id="admin-clients-table">
             <thead><tr><th>Client Name</th><th>Code</th><th>Employees</th><th>Last Submission</th><th>Status</th></tr></thead>
             <tbody id="admin-clients-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div id="tab-changes" class="tab-content" style="display:none">
-      <div class="card">
-        <div class="card-body" style="padding:0;overflow-x:auto">
-          <table class="submissions-table" id="admin-changes-table">
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Employee</th>
-                <th>Fields Changed</th>
-                <th>What Changed</th>
-                <th>Submitted</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="admin-changes-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -1571,106 +1240,38 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════════════════
-//  FIREBASE + LOCAL STORAGE HYBRID DATA LAYER
+//  DATA STORE  (localStorage for persistence)
 // ══════════════════════════════════════════════════════════════════════════
 const ADMIN_PIN = '1234';
-let fbApp = null, fbDb = null, fbRef = null, fbGet = null, fbSet = null, fbOnValue = null, fbRemove = null;
-let usingFirebase = false;
 
-// Load saved Firebase config
-const savedFbConfig = JSON.parse(localStorage.getItem('paysync_fb_config') || 'null');
-if (savedFbConfig) initFirebase(savedFbConfig);
-
-async function initFirebase(config) {
-  try {
-    await new Promise(r => setTimeout(r, 500)); // wait for module
-    const m = window._fbModules;
-    if (!m) return;
-    fbApp = m.initializeApp(config);
-    fbDb  = m.getDatabase(fbApp);
-    fbRef = m.ref; fbGet = m.get; fbSet = m.set;
-    fbOnValue = m.onValue; fbRemove = m.remove;
-    usingFirebase = true;
-    // Subscribe to live updates
-    fbOnValue(fbRef(fbDb, 'paysync'), snap => {
-      if (snap.exists()) {
-        db = snap.val();
-        // refresh active page
-        const active = document.querySelector('.page.active')?.id;
-        if (active === 'pg-admin') loadAdminDashboard();
-        if (active === 'pg-client-home') loadClientHome();
-      }
-    });
-    console.log('Firebase connected');
-  } catch(e) { console.error('Firebase init error:', e); usingFirebase = false; }
-}
-
-function getSeedData() {
+function getData() {
+  const d = localStorage.getItem('paysync');
+  if (d) return JSON.parse(d);
   return {
-    clients: {
-      c1: { id:'c1', name:'Smith Construction Ltd.', code:'SMITH2024', freq:'biweekly' },
-      c2: { id:'c2', name:'Patel Restaurant Group',  code:'PATEL2024', freq:'weekly'   },
-      c3: { id:'c3', name:'Northern Auto Services',  code:'NORTHAUTO', freq:'semimonthly' }
-    },
-    employees: {
-      e1: { id:'e1', clientId:'c1', first:'James',  last:"O'Brien",  title:'Site Supervisor', type:'FT', payType:'hourly', rate:38,    banking:true,  td1:true,  status:'active', startDate:'2023-03-01', email:'james@example.com', phone:'403-555-0100', address:'123 Main St', city:'Calgary', province:'AB', postal:'T2P 1A1', bankInst:'010', bankTransit:'12345', bankAcct:'****789', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'biweekly', notes:'' },
-      e2: { id:'e2', clientId:'c1', first:'Maria',  last:'Santos',   title:'Estimator',       type:'FT', payType:'salary', rate:72000, banking:true,  td1:true,  status:'active', startDate:'2022-08-15', email:'maria@example.com', phone:'403-555-0101', address:'456 Oak Ave', city:'Calgary', province:'AB', postal:'T2E 2B2', bankInst:'004', bankTransit:'22222', bankAcct:'****321', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'biweekly', notes:'' },
-      e3: { id:'e3', clientId:'c1', first:'Dylan',  last:'Kowalski', title:'Labourer',         type:'PT', payType:'hourly', rate:22,    banking:false, td1:false, status:'active', startDate:'2024-01-10', email:'', phone:'', address:'', city:'', province:'', postal:'', bankInst:'', bankTransit:'', bankAcct:'', bankType:'', td1Fed:'', td1Prov:'', freq:'biweekly', notes:'Banking info still needed' },
-      e4: { id:'e4', clientId:'c2', first:'Priya',  last:'Sharma',   title:'Manager',          type:'FT', payType:'salary', rate:58000, banking:true,  td1:true,  status:'active', startDate:'2023-06-01', email:'priya@example.com', phone:'403-555-0200', address:'789 Elm Rd', city:'Calgary', province:'AB', postal:'T3A 3C3', bankInst:'002', bankTransit:'33333', bankAcct:'****456', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'weekly', notes:'' },
-      e5: { id:'e5', clientId:'c2', first:'Kevin',  last:'Tran',     title:'Server',           type:'PT', payType:'hourly', rate:16.5,  banking:true,  td1:false, status:'active', startDate:'2024-02-20', email:'kevin@example.com', phone:'403-555-0201', address:'10 Park Blvd', city:'Calgary', province:'AB', postal:'T2N 4D4', bankInst:'010', bankTransit:'44444', bankAcct:'****654', bankType:'savings',  td1Fed:'15705', td1Prov:'', freq:'weekly', notes:'No provincial TD1 on file' },
-      e6: { id:'e6', clientId:'c3', first:'Sandra', last:'Leblanc',  title:'Service Advisor',  type:'FT', payType:'hourly', rate:28,    banking:true,  td1:true,  status:'active', startDate:'2021-11-01', email:'sandra@example.com', phone:'403-555-0300', address:'22 River Dr', city:'Calgary', province:'AB', postal:'T3B 5E5', bankInst:'003', bankTransit:'55555', bankAcct:'****987', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'semimonthly', notes:'' }
-    },
-    submissions: {
-      s1: { id:'s1', type:'payroll', clientId:'c1', period:'Mar 1-14, 2024', submitted:'Mar 15, 2024', empCount:3, flags:0, status:'done', note:'Processed', hours:{e1:{reg:80,ot:0,vac:0,stat:false,other:0}, e2:{reg:80,ot:0,vac:0,stat:false,other:0}, e3:{reg:32,ot:0,vac:0,stat:false,other:0}} },
-      s2: { id:'s2', type:'payroll', clientId:'c2', period:'Mar 11-17, 2024', submitted:'Mar 18, 2024', empCount:2, flags:1, status:'review', note:'OT flag on Kevin', hours:{e4:{reg:40,ot:0,vac:0,stat:false,other:0}, e5:{reg:48,ot:4,vac:0,stat:false,other:0}} },
-      s3: { id:'s3', type:'employee', clientId:'c1', empName:'Dylan Kowalski', startDate:'2024-01-10', banking:'Missing', td1:'Missing', submitted:'Jan 8, 2024', status:'review', note:'Banking info needed', empDetails:{} }
-    }
+    clients: [
+      { id: 'c1', name: 'Smith Construction Ltd.', code: 'SMITH2024', freq: 'biweekly' },
+      { id: 'c2', name: 'Patel Restaurant Group', code: 'PATEL2024', freq: 'weekly' },
+      { id: 'c3', name: 'Northern Auto Services', code: 'NORTHAUTO', freq: 'semimonthly' },
+    ],
+    employees: [
+      { id:'e1', clientId:'c1', first:'James', last:'O\'Brien', title:'Site Supervisor', type:'FT', payType:'hourly', rate:38, banking:true, td1:true, status:'active', startDate:'2023-03-01' },
+      { id:'e2', clientId:'c1', first:'Maria', last:'Santos', title:'Estimator', type:'FT', payType:'salary', rate:72000, banking:true, td1:true, status:'active', startDate:'2022-08-15' },
+      { id:'e3', clientId:'c1', first:'Dylan', last:'Kowalski', title:'Labourer', type:'PT', payType:'hourly', rate:22, banking:false, td1:false, status:'active', startDate:'2024-01-10' },
+      { id:'e4', clientId:'c2', first:'Priya', last:'Sharma', title:'Manager', type:'FT', payType:'salary', rate:58000, banking:true, td1:true, status:'active', startDate:'2023-06-01' },
+      { id:'e5', clientId:'c2', first:'Kevin', last:'Tran', title:'Server', type:'PT', payType:'hourly', rate:16.50, banking:true, td1:false, status:'active', startDate:'2024-02-20' },
+      { id:'e6', clientId:'c3', first:'Sandra', last:'Leblanc', title:'Service Advisor', type:'FT', payType:'hourly', rate:28, banking:true, td1:true, status:'active', startDate:'2021-11-01' },
+    ],
+    submissions: [
+      { id:'s1', type:'payroll', clientId:'c1', period:'Mar 1–14, 2024', submitted:'Mar 15, 2024', empCount:3, flags:0, status:'done', note:'Processed' },
+      { id:'s2', type:'payroll', clientId:'c2', period:'Mar 11–17, 2024', submitted:'Mar 18, 2024', empCount:2, flags:1, status:'review', note:'OT flag on Kevin' },
+      { id:'s3', type:'employee', clientId:'c1', empName:'Dylan Kowalski', startDate:'2024-01-10', banking:'❌ Missing', td1:'❌ Missing', submitted:'Jan 8, 2024', status:'review', note:'Banking info needed' },
+    ]
   };
 }
 
-function migrateData(raw) {
-  // Convert any top-level arrays to keyed objects (v1/v2 → v3+ format)
-  function toObj(arr) {
-    if (!arr) return {};
-    if (Array.isArray(arr)) {
-      const obj = {};
-      arr.forEach(item => { if (item && item.id) obj[item.id] = item; });
-      return obj;
-    }
-    return arr; // already an object
-  }
-  raw.clients     = toObj(raw.clients);
-  raw.employees   = toObj(raw.employees);
-  raw.submissions = toObj(raw.submissions);
-  return raw;
-}
+function saveData(d) { localStorage.setItem('paysync', JSON.stringify(d)); }
 
-function getLocalData() {
-  try {
-    const d = localStorage.getItem('paysync');
-    if (d) {
-      const parsed = JSON.parse(d);
-      return migrateData(parsed);
-    }
-  } catch(e) {
-    console.warn('LocalStorage parse error, resetting:', e);
-    localStorage.removeItem('paysync');
-  }
-  const seed = getSeedData();
-  localStorage.setItem('paysync', JSON.stringify(seed));
-  return seed;
-}
-
-function saveLocalData(d) { localStorage.setItem('paysync', JSON.stringify(d)); }
-
-async function saveData(d) {
-  saveLocalData(d);
-  if (usingFirebase && fbDb) {
-    try { await fbSet(fbRef(fbDb, 'paysync'), d); } catch(e) { console.warn('FB save error:', e); }
-  }
-}
-
-let db = getLocalData();
+let db = getData();
 let currentClientId = null;
 let currentEmpStep  = 1;
 let empFormData     = {};
@@ -1681,15 +1282,13 @@ let empFormData     = {};
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  if (id === 'pg-client-home')    loadClientHome();
-  if (id === 'pg-payroll-run')    loadPayrollRun();
+  if (id === 'pg-client-home') loadClientHome();
+  if (id === 'pg-payroll-run') loadPayrollRun();
   if (id === 'pg-view-employees') loadRoster();
-  if (id === 'pg-update-employee') {} // loaded via openUpdateEmployee()
-  if (id === 'pg-pick-employee') loadPickEmployee();
-  if (id === 'pg-history')        loadHistory();
-  if (id === 'pg-admin')          loadAdminDashboard();
-  if (id === 'pg-admin-clients')  loadManageClients();
-  if (id === 'pg-new-employee')   { currentEmpStep=1; showEmpStep(1); empFormData={}; }
+  if (id === 'pg-history') loadHistory();
+  if (id === 'pg-admin') loadAdminDashboard();
+  if (id === 'pg-admin-clients') loadManageClients();
+  if (id === 'pg-new-employee') { currentEmpStep=1; showEmpStep(1); empFormData={}; }
   window.scrollTo(0,0);
 }
 
@@ -1697,50 +1296,26 @@ function showPage(id) {
 //  LOGIN
 // ══════════════════════════════════════════════════════════════════════════
 function clientLogin() {
-  try {
-    // Always re-read and migrate storage on login
-    if (!usingFirebase) {
-      db = getLocalData();
-    }
-    const code = document.getElementById('login-code').value.trim().toUpperCase();
-    if (!code) {
-      document.getElementById('login-error').textContent = 'Please enter your access code.';
-      document.getElementById('login-error').classList.add('show');
-      document.getElementById('login-code').classList.add('error');
-      return;
-    }
-    const clients = db.clients ? Object.values(db.clients) : [];
-    const client = clients.find(c => c.code === code);
-    if (!client) {
-      document.getElementById('login-error').textContent = 'Invalid code. Please contact your accountant.';
-      document.getElementById('login-error').classList.add('show');
-      document.getElementById('login-code').classList.add('error');
-      return;
-    }
-    document.getElementById('login-error').classList.remove('show');
-    document.getElementById('login-code').classList.remove('error');
-    currentClientId = client.id;
-    showPage('pg-client-home');
-  } catch(e) {
-    console.error('Login error:', e);
-    document.getElementById('login-error').textContent = 'Login error — please refresh the page and try again.';
+  const code = document.getElementById('login-code').value.trim().toUpperCase();
+  const client = db.clients.find(c => c.code === code);
+  if (!client) {
     document.getElementById('login-error').classList.add('show');
+    document.getElementById('login-code').classList.add('error');
+    return;
   }
-}
-
-function clearAndReload() {
-  if (confirm("This will clear your browser cached data and reload the page.\n\nNote: Any clients or employees added through this browser only (not via Firebase) will need to be re-added.\n\nContinue?")) {
-    localStorage.removeItem('paysync');
-    localStorage.removeItem('paysync_fb_config');
-    window.location.reload();
-  }
+  document.getElementById('login-error').classList.remove('show');
+  currentClientId = client.id;
+  showPage('pg-client-home');
 }
 
 function adminLogin() { showPage('pg-admin-login'); }
 
 function verifyAdmin() {
   const pin = document.getElementById('admin-pin').value;
-  if (pin !== ADMIN_PIN) { document.getElementById('admin-pin-error').classList.add('show'); return; }
+  if (pin !== ADMIN_PIN) {
+    document.getElementById('admin-pin-error').classList.add('show');
+    return;
+  }
   currentClientId = 'admin';
   showPage('pg-admin');
 }
@@ -1751,97 +1326,41 @@ document.getElementById('login-code').addEventListener('keydown', e => { if(e.ke
 document.getElementById('admin-pin').addEventListener('keydown', e => { if(e.key==='Enter') verifyAdmin(); });
 
 // ══════════════════════════════════════════════════════════════════════════
-//  FIREBASE SETUP UI
-// ══════════════════════════════════════════════════════════════════════════
-function showFirebaseSetup() {
-  const modal = document.getElementById('firebase-modal');
-  modal.style.display = 'flex';
-}
-function closeFirebaseSetup() {
-  document.getElementById('firebase-modal').style.display = 'none';
-}
-async function saveFirebaseConfig() {
-  const apiKey    = document.getElementById('fb-apikey').value.trim();
-  const projectId = document.getElementById('fb-projectid').value.trim();
-  const dbUrl     = document.getElementById('fb-dburl').value.trim();
-  if (!apiKey || !projectId || !dbUrl) { alert('Please fill in all three fields.'); return; }
-
-  const btn = document.getElementById('fb-save-btn');
-  btn.textContent = 'Connecting...'; btn.disabled = true;
-  document.getElementById('fb-error').style.display = 'none';
-
-  const config = { apiKey, projectId, databaseURL: dbUrl, authDomain: `${projectId}.firebaseapp.com` };
-  try {
-    // Test connection by trying to init
-    const m = window._fbModules;
-    if (!m) throw new Error('Firebase modules not loaded yet. Try again in a moment.');
-    // Check if already initialized
-    let app;
-    try { app = m.initializeApp(config, 'test-'+Date.now()); }
-    catch(e) { app = m.initializeApp(config); }
-    const testDb  = m.getDatabase(app);
-    const testRef = m.ref(testDb, 'paysync_test');
-    await m.set(testRef, { ok: true });
-    // Success — save config and reinit
-    localStorage.setItem('paysync_fb_config', JSON.stringify(config));
-    // Push local data to Firebase
-    fbApp = app; fbDb = testDb;
-    fbRef = m.ref; fbGet = m.get; fbSet = m.set; fbOnValue = m.onValue; fbRemove = m.remove;
-    usingFirebase = true;
-    await fbSet(fbRef(fbDb, 'paysync'), db);
-    document.getElementById('fb-success').style.display = 'flex';
-    document.getElementById('firebase-setup-banner').style.display = 'none';
-    setTimeout(() => { closeFirebaseSetup(); loadAdminDashboard(); }, 2000);
-  } catch(e) {
-    document.getElementById('fb-error').style.display = 'flex';
-    document.getElementById('fb-error-text').textContent = 'Error: ' + e.message;
-    btn.textContent = 'Test and Save Connection'; btn.disabled = false;
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════
 //  CLIENT HOME
 // ══════════════════════════════════════════════════════════════════════════
 function loadClientHome() {
-  const clients = db.clients ? Object.values(db.clients) : [];
-  const client = clients.find(c => c.id === currentClientId);
+  const client = db.clients.find(c => c.id === currentClientId);
   if (!client) return;
-  ['client-badge','client-badge-2','client-badge-3','client-badge-4','client-badge-5'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = client.name;
-  });
+  document.getElementById('client-badge').textContent = client.name;
+  document.getElementById('client-badge-2').textContent = client.name;
+  document.getElementById('client-badge-3').textContent = client.name;
+  document.getElementById('client-badge-4').textContent = client.name;
+  document.getElementById('client-badge-5').textContent = client.name;
   document.getElementById('client-welcome').textContent = 'Welcome, ' + client.name;
-  document.getElementById('client-welcome-sub').textContent = 'What would you like to do today? Pay frequency: ' + client.freq + '.';
+  document.getElementById('client-welcome-sub').textContent = 'What would you like to do today? Payroll frequency: ' + client.freq + '.';
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-CA', {weekday:'short',year:'numeric',month:'short',day:'numeric'});
-
-  // Check for missing banking info
-  const emps = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
-  const missingBanking = emps.filter(e => !e.banking);
-  if (missingBanking.length) {
-    const alertEl = document.getElementById('pending-alert');
-    alertEl.style.display = 'flex';
-    alertEl.querySelector('div').innerHTML = '<strong>' + missingBanking.length + ' employee(s) missing banking info:</strong> ' + missingBanking.map(e=>e.first+' '+e.last).join(', ') + '. Please add or update their profiles.';
-  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  PAYROLL RUN
 // ══════════════════════════════════════════════════════════════════════════
 function loadPayrollRun() {
-  const emps = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
+  const emps = db.employees.filter(e => e.clientId === currentClientId);
   const tbody = document.getElementById('hours-tbody');
   tbody.innerHTML = '';
+
   if (!emps.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees found. Please add employees first.</td></tr>';
     return;
   }
+
   emps.forEach(e => {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td><div class="emp-name-cell">${e.first} ${e.last}</div><div class="text-small text-muted">${e.title}</div></td>
       <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
       <td><input type="number" id="hrs-reg-${e.id}" min="0" max="120" step="0.5" placeholder="0" oninput="checkHours('${e.id}')"></td>
-      <td><input type="number" id="hrs-ot-${e.id}"  min="0" max="80"  step="0.5" placeholder="0"></td>
+      <td><input type="number" id="hrs-ot-${e.id}" min="0" max="80" step="0.5" placeholder="0"></td>
       <td><input type="number" id="hrs-vac-${e.id}" min="0" step="0.01" placeholder="0.00"></td>
       <td style="text-align:center"><input type="checkbox" id="hrs-stat-${e.id}"></td>
       <td><input type="number" id="hrs-other-${e.id}" min="0" step="0.01" placeholder="0.00"></td>
@@ -1852,71 +1371,60 @@ function loadPayrollRun() {
 }
 
 function checkHours(empId) {
-  const reg = parseFloat(document.getElementById('hrs-reg-'+empId)?.value) || 0;
-  const input = document.getElementById('hrs-reg-'+empId);
-  if (reg > 44) input.classList.add('warn'); else input.classList.remove('warn');
-  const emps = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
+  const reg = parseFloat(document.getElementById(`hrs-reg-${empId}`)?.value) || 0;
+  const input = document.getElementById(`hrs-reg-${empId}`);
   const warnings = [];
-  emps.forEach(e => {
-    const r = parseFloat(document.getElementById('hrs-reg-'+e.id)?.value)||0;
-    if (r > 44) warnings.push(e.first+' '+e.last+': '+r+' regular hours (AB OT threshold is 44)');
-  });
+  if (reg > 44) {
+    input.classList.add('warn');
+    warnings.push(`Hours > 44 for an employee — verify overtime eligibility (AB threshold).`);
+  } else {
+    input.classList.remove('warn');
+  }
   const warnDiv = document.getElementById('hours-warnings');
   const warnText = document.getElementById('hours-warnings-text');
-  if (warnings.length) { warnDiv.style.display='flex'; warnText.innerHTML='<strong>Overtime flags:</strong><br>'+warnings.join('<br>'); }
-  else warnDiv.style.display='none';
+  if (warnings.length) {
+    warnDiv.style.display = 'flex';
+    warnText.innerHTML = warnings.join('<br>');
+  } else {
+    warnDiv.style.display = 'none';
+  }
 }
 
-async function submitPayrollRun() {
-  const start   = document.getElementById('pp-start').value;
-  const end     = document.getElementById('pp-end').value;
-  const paydate = document.getElementById('pp-paydate').value;
+function submitPayrollRun() {
+  const start = document.getElementById('pp-start').value;
+  const end   = document.getElementById('pp-end').value;
+  const pay   = document.getElementById('pp-paydate').value;
+
   let valid = true;
-  if (!start)   { showErr('err-pp-start','pp-start');     valid=false; }
-  if (!end)     { showErr('err-pp-end','pp-end');         valid=false; }
-  if (!paydate) { showErr('err-pp-paydate','pp-paydate'); valid=false; }
+  if (!start) { showErr('err-pp-start', 'pp-start'); valid=false; }
+  if (!end)   { showErr('err-pp-end',   'pp-end');   valid=false; }
+  if (!pay)   { showErr('err-pp-paydate','pp-paydate'); valid=false; }
   if (!valid) return;
 
-  const emps  = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
+  const emps = db.employees.filter(e => e.clientId === currentClientId);
   let flags = 0;
-  const hoursData = {};
   emps.forEach(e => {
-    const reg   = parseFloat(document.getElementById('hrs-reg-'+e.id)?.value)   || 0;
-    const ot    = parseFloat(document.getElementById('hrs-ot-'+e.id)?.value)    || 0;
-    const vac   = parseFloat(document.getElementById('hrs-vac-'+e.id)?.value)   || 0;
-    const stat  = document.getElementById('hrs-stat-'+e.id)?.checked || false;
-    const other = parseFloat(document.getElementById('hrs-other-'+e.id)?.value) || 0;
+    const reg = parseFloat(document.getElementById(`hrs-reg-${e.id}`)?.value) || 0;
     if (reg > 44) flags++;
-    hoursData[e.id] = {
-      empName:  e.first+' '+e.last,
-      title:    e.title,
-      type:     e.type,
-      payType:  e.payType,
-      rate:     e.rate,
-      reg, ot, vac, stat, other,
-      grossPay: e.payType === 'hourly' ? ((reg * e.rate) + (ot * e.rate * 1.5) + other + vac).toFixed(2)
-                                       : ((e.rate / (e.freq==='weekly'?52:e.freq==='biweekly'?26:e.freq==='semimonthly'?24:12)) + other + vac).toFixed(2)
-    };
   });
 
-  const fmt = d => { if(!d) return ''; const [y,m,dy]=d.split('-'); return m+'/'+dy+'/'+y; };
-  const id  = 's'+Date.now();
-  if (!db.submissions) db.submissions = {};
-  db.submissions[id] = {
-    id, type:'payroll', clientId:currentClientId,
-    period: fmt(start)+' - '+fmt(end),
-    payDate: fmt(paydate),
-    ppStart: start, ppEnd: end,
-    notes: document.getElementById('pp-notes').value,
+  const fmt = d => { if(!d) return ''; const [y,m,dy]=d.split('-'); return `${m}/${dy}/${y}`; };
+  const sub = {
+    id: 's'+Date.now(),
+    type: 'payroll',
+    clientId: currentClientId,
+    period: `${fmt(start)} – ${fmt(end)}`,
     submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
-    empCount: emps.length, flags, status:'new',
-    note: flags ? flags+' OT flag(s)' : '',
-    hours: hoursData
+    empCount: emps.length,
+    flags,
+    status: 'new',
+    note: flags ? `${flags} OT flag(s) — verify` : ''
   };
-  await saveData(db);
+  db.submissions.push(sub);
+  saveData(db);
 
   document.getElementById('success-title').textContent = 'Payroll Run Submitted!';
-  document.getElementById('success-msg').textContent = 'Pay period '+fmt(start)+' - '+fmt(end)+' received. Your accountant will review and process within 1-2 business days.';
+  document.getElementById('success-msg').textContent = `Pay period ${fmt(start)} – ${fmt(end)} received. Your accountant will review and process within 1–2 business days.`;
   showPage('pg-success');
 }
 
@@ -1925,10 +1433,14 @@ async function submitPayrollRun() {
 // ══════════════════════════════════════════════════════════════════════════
 function showEmpStep(n) {
   for (let i=1;i<=4;i++) {
-    const el = document.getElementById('emp-step-'+i);
+    const el = document.getElementById(`emp-step-${i}`);
     if (el) el.style.display = i===n ? 'block' : 'none';
-    const ind = document.getElementById('step'+i+'-ind');
-    if (ind) { ind.classList.remove('active','done'); if(i<n) ind.classList.add('done'); if(i===n) ind.classList.add('active'); }
+    const ind = document.getElementById(`step${i}-ind`);
+    if (ind) {
+      ind.classList.remove('active','done');
+      if (i < n) ind.classList.add('done');
+      if (i === n) ind.classList.add('active');
+    }
   }
   currentEmpStep = n;
   if (n===4) buildReview();
@@ -1936,32 +1448,48 @@ function showEmpStep(n) {
 }
 
 function showErr(errId, inputId) {
-  const e=document.getElementById(errId), i=document.getElementById(inputId);
-  if(e) e.classList.add('show'); if(i) i.classList.add('error');
+  const e = document.getElementById(errId);
+  const i = document.getElementById(inputId);
+  if (e) e.classList.add('show');
+  if (i) i.classList.add('error');
 }
 function clearErr(errId, inputId) {
-  const e=document.getElementById(errId), i=document.getElementById(inputId);
-  if(e) e.classList.remove('show'); if(i) i.classList.remove('error');
+  const e = document.getElementById(errId);
+  const i = document.getElementById(inputId);
+  if (e) e.classList.remove('show');
+  if (i) i.classList.remove('error');
 }
 
 function validateStep1() {
   let ok = true;
-  [['emp-first','err-emp-first'],['emp-last','err-emp-last'],['emp-dob','err-emp-dob'],
-   ['emp-email','err-emp-email'],['emp-phone','err-emp-phone'],['emp-address','err-emp-address'],
-   ['emp-city','err-emp-city'],['emp-province','err-emp-province'],['emp-postal','err-emp-postal']
-  ].forEach(([id,err]) => {
+  const req = [
+    ['emp-first','err-emp-first'],['emp-last','err-emp-last'],
+    ['emp-dob','err-emp-dob'],['emp-email','err-emp-email'],
+    ['emp-phone','err-emp-phone'],['emp-address','err-emp-address'],
+    ['emp-city','err-emp-city'],['emp-province','err-emp-province'],
+    ['emp-postal','err-emp-postal']
+  ];
+  req.forEach(([id,err]) => {
     const v = document.getElementById(id)?.value?.trim();
-    if (!v) { showErr(err,id); ok=false; } else clearErr(err,id);
+    if (!v) { showErr(err,id); ok=false; } else { clearErr(err,id); }
   });
+  // SIN validation
   const sin = document.getElementById('emp-sin').value.replace(/-/g,'');
-  if (sin.length!==9||!/^\d{9}$/.test(sin)) { showErr('err-emp-sin','emp-sin'); ok=false; } else clearErr('err-emp-sin','emp-sin');
+  if (sin.length !== 9 || !/^\d{9}$/.test(sin)) { showErr('err-emp-sin','emp-sin'); ok=false; }
+  else clearErr('err-emp-sin','emp-sin');
+
   if (ok) {
     empFormData.personal = {
-      first: document.getElementById('emp-first').value,    last:    document.getElementById('emp-last').value,
-      dob:   document.getElementById('emp-dob').value,       sin:     document.getElementById('emp-sin').value,
-      email: document.getElementById('emp-email').value,    phone:   document.getElementById('emp-phone').value,
-      address: document.getElementById('emp-address').value, city:   document.getElementById('emp-city').value,
-      province: document.getElementById('emp-province').value, postal: document.getElementById('emp-postal').value,
+      first: document.getElementById('emp-first').value,
+      last:  document.getElementById('emp-last').value,
+      dob:   document.getElementById('emp-dob').value,
+      sin:   document.getElementById('emp-sin').value,
+      email: document.getElementById('emp-email').value,
+      phone: document.getElementById('emp-phone').value,
+      address: document.getElementById('emp-address').value,
+      city: document.getElementById('emp-city').value,
+      province: document.getElementById('emp-province').value,
+      postal: document.getElementById('emp-postal').value,
     };
     showEmpStep(2);
   }
@@ -1969,39 +1497,46 @@ function validateStep1() {
 
 function validateStep2() {
   let ok = true;
-  const inst=document.getElementById('emp-bank-inst').value, transit=document.getElementById('emp-bank-transit').value;
-  const acct=document.getElementById('emp-bank-acct').value, type=document.getElementById('emp-bank-type').value;
-  if (inst.length!==3)       { showErr('err-emp-bank-inst','emp-bank-inst');       ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
-  if (transit.length!==5)    { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
-  if (acct.length<7||acct.length>12) { showErr('err-emp-bank-acct','emp-bank-acct'); ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
+  const inst    = document.getElementById('emp-bank-inst').value;
+  const transit = document.getElementById('emp-bank-transit').value;
+  const acct    = document.getElementById('emp-bank-acct').value;
+  const type    = document.getElementById('emp-bank-type').value;
+
+  if (inst.length !== 3)    { showErr('err-emp-bank-inst',   'emp-bank-inst');    ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
+  if (transit.length !== 5) { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
+  if (acct.length < 7 || acct.length > 12) { showErr('err-emp-bank-acct','emp-bank-acct'); ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
   if (!type) { showErr('err-emp-bank-type','emp-bank-type'); ok=false; } else clearErr('err-emp-bank-type','emp-bank-type');
+
   if (ok) {
-    empFormData.banking = { inst, transit, acctFull: acct, acct:'****'+acct.slice(-3), type };
+    empFormData.banking = { inst, transit, acct: '****'+acct.slice(-3), type };
     showEmpStep(3);
   }
 }
 
 function validateStep3() {
   let ok = true;
-  [['emp-start-date','err-emp-start'],['emp-title','err-emp-title'],
-   ['emp-type','err-emp-type'],['emp-pay-type','err-emp-pay-type'],['emp-freq','err-emp-freq']
-  ].forEach(([id,err]) => {
+  const req = [
+    ['emp-start-date','err-emp-start'],['emp-title','err-emp-title'],
+    ['emp-type','err-emp-type'],['emp-pay-type','err-emp-pay-type'],
+    ['emp-freq','err-emp-freq']
+  ];
+  req.forEach(([id,err]) => {
     const v = document.getElementById(id)?.value?.trim();
-    if (!v) { showErr(err,id); ok=false; } else clearErr(err,id);
+    if (!v) { showErr(err,id); ok=false; } else { clearErr(err,id); }
   });
   const rate = parseFloat(document.getElementById('emp-rate').value);
-  if (!rate||rate<=0) { showErr('err-emp-rate','emp-rate'); ok=false; } else clearErr('err-emp-rate','emp-rate');
+  if (!rate || rate <= 0) { showErr('err-emp-rate','emp-rate'); ok=false; } else clearErr('err-emp-rate','emp-rate');
+
   if (ok) {
     empFormData.payroll = {
       startDate: document.getElementById('emp-start-date').value,
       title:     document.getElementById('emp-title').value,
       type:      document.getElementById('emp-type').value,
       payType:   document.getElementById('emp-pay-type').value,
-      rate,
+      rate:      rate,
       freq:      document.getElementById('emp-freq').value,
-      td1Fed:    document.getElementById('emp-td1-fed').value  || '15705',
+      td1Fed:    document.getElementById('emp-td1-fed').value || '15705',
       td1Prov:   document.getElementById('emp-td1-prov').value || '21003',
-      extraTax:  document.getElementById('emp-extra-tax').value || '0',
       notes:     document.getElementById('emp-notes').value,
     };
     showEmpStep(4);
@@ -2009,67 +1544,71 @@ function validateStep3() {
 }
 
 function buildReview() {
-  const p=empFormData.personal||{}, b=empFormData.banking||{}, r=empFormData.payroll||{};
+  const p = empFormData.personal || {};
+  const b = empFormData.banking  || {};
+  const r = empFormData.payroll  || {};
   const items = [
-    { label:'Full Name',        value:p.first+' '+p.last,      ok:!!(p.first&&p.last) },
-    { label:'Date of Birth',    value:p.dob,                   ok:!!p.dob },
-    { label:'SIN',              value:p.sin?'***-***-'+p.sin.replace(/-/g,'').slice(-3):'', ok:!!p.sin },
-    { label:'Email',            value:p.email,                 ok:!!p.email },
-    { label:'Phone',            value:p.phone,                 ok:!!p.phone },
-    { label:'Address',          value:p.address+', '+p.city+' '+p.province+' '+p.postal, ok:true },
-    { label:'Banking (masked)', value:'Inst '+b.inst+' | Transit '+b.transit+' | Acct '+b.acct+' ('+b.type+')', ok:!!(b.inst&&b.transit) },
-    { label:'Start Date',       value:r.startDate,             ok:!!r.startDate },
-    { label:'Job Title',        value:r.title,                 ok:!!r.title },
-    { label:'Employment Type',  value:r.type+' | '+r.payType,  ok:true },
-    { label:'Pay Rate',         value:'$'+r.rate+(r.payType==='hourly'?'/hr':'/yr')+' | '+r.freq, ok:true },
-    { label:'TD1 Federal',      value:'$'+r.td1Fed,            ok:true },
-    { label:'TD1 Provincial',   value:'$'+r.td1Prov,           ok:true },
+    { label: 'Full Name',        value: `${p.first} ${p.last}`,                  ok: !!(p.first && p.last) },
+    { label: 'SIN',              value: p.sin ? '***-***-' + p.sin.replace(/-/g,'').slice(-3) : '', ok: !!p.sin },
+    { label: 'Email',            value: p.email,  ok: !!p.email },
+    { label: 'Home Address',     value: `${p.address}, ${p.city} ${p.province} ${p.postal}`, ok: true },
+    { label: 'Banking (masked)', value: `Institution ${b.inst} · Transit ${b.transit} · Acct ${b.acct} (${b.type})`, ok: !!(b.inst && b.transit) },
+    { label: 'Start Date',       value: r.startDate,  ok: !!r.startDate },
+    { label: 'Job Title',        value: r.title,      ok: !!r.title },
+    { label: 'Pay',              value: `${r.payType} — $${r.rate} · ${r.freq}`, ok: true },
+    { label: 'TD1 Federal',      value: `$${r.td1Fed}`, ok: true },
+    { label: 'TD1 Provincial',   value: `$${r.td1Prov}`, ok: true },
   ];
-  document.getElementById('review-checklist').innerHTML =
-    '<ul class="checklist">'+items.map(i=>`<li class="${i.ok&&i.value?'complete':'missing'}"><span class="check-icon">${i.ok&&i.value?'ok':'!'}</span><div><strong>${i.label}:</strong> ${i.value||'Missing'}</div></li>`).join('')+'</ul>';
+  document.getElementById('review-checklist').innerHTML = `
+    <ul class="checklist">
+      ${items.map(i => `
+        <li class="${i.ok && i.value ? 'complete' : 'missing'}">
+          <span class="check-icon">${i.ok && i.value ? '✓' : '⚠'}</span>
+          <div><strong>${i.label}:</strong> ${i.value || '— Missing'}</div>
+        </li>`).join('')}
+    </ul>`;
 }
 
-async function submitNewEmployee() {
-  if (!document.getElementById('emp-confirm').checked) { showErr('err-emp-confirm','emp-confirm'); return; }
-  const p=empFormData.personal||{}, b=empFormData.banking||{}, r=empFormData.payroll||{};
-  const id = 'e'+Date.now();
-  if (!db.employees) db.employees = {};
-  db.employees[id] = {
-    id, clientId: currentClientId,
-    // Personal
-    first:p.first, last:p.last, dob:p.dob, sin:p.sin, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
-    email:p.email, phone:p.phone, address:p.address, city:p.city, province:p.province, postal:p.postal,
-    // Banking
-    bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankType:b.type,
-    // Payroll
-    title:r.title, type:r.type, payType:r.payType, rate:r.rate, freq:r.freq,
-    td1Fed:r.td1Fed, td1Prov:r.td1Prov, extraTax:r.extraTax, notes:r.notes,
-    startDate:r.startDate,
-    banking:true, td1:true, status:'active'
+function submitNewEmployee() {
+  if (!document.getElementById('emp-confirm').checked) {
+    showErr('err-emp-confirm','emp-confirm');
+    return;
+  }
+  const r = empFormData.payroll || {};
+  const p = empFormData.personal || {};
+  const newEmp = {
+    id: 'e' + Date.now(),
+    clientId: currentClientId,
+    first:    p.first,
+    last:     p.last,
+    title:    r.title,
+    type:     r.type,
+    payType:  r.payType,
+    rate:     r.rate,
+    banking:  true,
+    td1:      true,
+    status:   'active',
+    startDate: r.startDate,
   };
+  db.employees.push(newEmp);
 
-  const subId = 'sub'+Date.now();
-  if (!db.submissions) db.submissions = {};
-  db.submissions[subId] = {
-    id:subId, type:'employee', clientId:currentClientId,
-    empName:p.first+' '+p.last,
-    startDate:r.startDate,
-    banking:'Provided',
-    td1:'Provided',
-    submitted:new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
-    status:'new', note:r.notes||'',
-    empDetails: {
-      first:p.first, last:p.last, dob:p.dob, sin:p.sin, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
-      email:p.email, phone:p.phone, address:p.address+', '+p.city+', '+p.province+' '+p.postal,
-      bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankAcctFull:b.acctFull, bankType:b.type,
-      title:r.title, type:r.type, payType:r.payType, rate:r.rate, freq:r.freq,
-      td1Fed:r.td1Fed, td1Prov:r.td1Prov, extraTax:r.extraTax
-    }
+  const sub = {
+    id: 'sub' + Date.now(),
+    type: 'employee',
+    clientId: currentClientId,
+    empName: `${p.first} ${p.last}`,
+    startDate: r.startDate,
+    banking: '✓ Provided',
+    td1: '✓ Provided',
+    submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
+    status: 'new',
+    note: r.notes || '',
   };
-  await saveData(db);
+  db.submissions.push(sub);
+  saveData(db);
 
-  document.getElementById('success-title').textContent = p.first+' '+p.last+' Added!';
-  document.getElementById('success-msg').textContent = 'New employee profile submitted. Your accountant will set up payroll and confirm within 1 business day.';
+  document.getElementById('success-title').textContent = `${p.first} ${p.last} Added!`;
+  document.getElementById('success-msg').textContent = `New employee profile submitted successfully. Your accountant will set up payroll and confirm within 1 business day.`;
   showPage('pg-success');
 }
 
@@ -2077,215 +1616,47 @@ async function submitNewEmployee() {
 //  ROSTER
 // ══════════════════════════════════════════════════════════════════════════
 function loadRoster() {
-  const emps  = db.employees ? Object.values(db.employees).filter(e=>e.clientId===currentClientId) : [];
+  const emps = db.employees.filter(e => e.clientId === currentClientId);
   const tbody = document.getElementById('roster-tbody');
   tbody.innerHTML = '';
-  if (!emps.length) { tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees yet.</td></tr>'; return; }
+  if (!emps.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees yet. Add your first employee above.</td></tr>';
+    return;
+  }
   emps.forEach(e => {
     const tr = document.createElement('tr');
-    const hasChanges = (db.submissions ? Object.values(db.submissions) : [])
-      .filter(s=>s.type==='update'&&s.empId===e.id&&s.status!=='done').length > 0;
     tr.innerHTML = `
-      <td>
-        <strong>${e.first} ${e.last}</strong>
-        <div class="text-small text-muted">${e.email||'No email on file'}</div>
-        ${hasChanges ? '<span class="status-badge status-review" style="font-size:10px;margin-top:4px;display:inline-flex">Pending update</span>' : ''}
-      </td>
+      <td><strong>${e.first} ${e.last}</strong></td>
       <td>${e.title}</td>
       <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
-      <td>${e.payType==='hourly'?'$'+e.rate+'/hr':'$'+Number(e.rate).toLocaleString()+'/yr'}</td>
-      <td>
-        <span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'✓ On file':'⚠ Missing'}</span>
-      </td>
+      <td>${e.payType==='hourly' ? '$'+e.rate+'/hr' : '$'+Number(e.rate).toLocaleString()+'/yr'}</td>
+      <td><span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'✓ On file':'⚠ Missing'}</span></td>
       <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>
-      <td>
-        <button class="btn btn-sm btn-outline" onclick="openUpdateEmployee('${e.id}')">✏ Update Info</button>
-      </td>
     `;
     tbody.appendChild(tr);
   });
-}
-
-function loadPickEmployee() {
-  const emps = db.employees ? Object.values(db.employees).filter(e=>e.clientId===currentClientId&&e.status!=='terminated') : [];
-  const list = document.getElementById('pick-emp-list');
-  const cb   = document.getElementById('client-badge-pick');
-  if (cb) cb.textContent = (db.clients&&Object.values(db.clients).find(c=>c.id===currentClientId)?.name)||'';
-
-  if (!list) return;
-  if (!emps.length) {
-    list.innerHTML = '<div class="alert alert-info"><span class="alert-icon">ℹ️</span><div>No employees found. Please add employees first.</div></div>';
-    return;
-  }
-
-  list.innerHTML = '';
-  emps.forEach(e => {
-    const pendingCount = (db.submissions ? Object.values(db.submissions) : [])
-      .filter(s=>s.type==='update'&&s.empId===e.id&&s.status!=='done').length;
-
-    const card = document.createElement('div');
-    card.style.cssText = 'background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:18px 22px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:space-between;gap:16px';
-    card.onmouseenter = () => { card.style.borderColor='#7c3aed'; card.style.boxShadow='var(--shadow-lg)'; card.style.transform='translateY(-2px)'; };
-    card.onmouseleave = () => { card.style.borderColor='var(--border)'; card.style.boxShadow=''; card.style.transform=''; };
-    card.onclick = () => openUpdateEmployee(e.id);
-
-    const bankStatus = e.banking
-      ? '<span class="status-badge status-done" style="font-size:11px">✓ Banking on file</span>'
-      : '<span class="status-badge status-review" style="font-size:11px">⚠ Banking missing</span>';
-    const pending = pendingCount > 0
-      ? '<span class="status-badge status-review" style="font-size:11px">'+pendingCount+' pending update</span>'
-      : '';
-
-    card.innerHTML = `
-      <div style="display:flex;align-items:center;gap:16px">
-        <div style="width:44px;height:44px;border-radius:50%;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">
-          ${e.first[0]}${e.last[0]}
-        </div>
-        <div>
-          <div style="font-weight:600;font-size:16px">${e.first} ${e.last}</div>
-          <div style="font-size:13px;color:var(--ink-muted);margin-top:2px">${e.title} &nbsp;·&nbsp; ${e.type} &nbsp;·&nbsp; ${e.payType==='hourly'?'$'+e.rate+'/hr':'$'+Number(e.rate).toLocaleString()+'/yr'}</div>
-          <div style="display:flex;gap:6px;margin-top:6px">${bankStatus} ${pending}</div>
-        </div>
-      </div>
-      <div style="color:#7c3aed;font-size:22px;flex-shrink:0">→</div>
-    `;
-    list.appendChild(card);
-  });
-}
-
-function openUpdateEmployee(empId) {
-  const emps = db.employees ? Object.values(db.employees) : [];
-  const emp  = emps.find(e=>e.id===empId);
-  if (!emp) return;
-
-  // Store which employee we're editing
-  window._updatingEmpId = empId;
-
-  // Set page title
-  document.getElementById('upd-emp-title').textContent = 'Update: '+emp.first+' '+emp.last;
-  document.getElementById('upd-emp-badge').textContent = emp.title+' · '+emp.type;
-  const cb = document.getElementById('client-badge-upd');
-  if (cb) cb.textContent = (db.clients&&Object.values(db.clients).find(c=>c.id===currentClientId)?.name)||'';
-
-  // Show current values as hints
-  const hint = (id, val) => { const el=document.getElementById(id); if(el&&val) el.textContent='Current: '+val; };
-  hint('upd-email-current',    emp.email||'Not on file');
-  hint('upd-phone-current',    emp.phone||'Not on file');
-  hint('upd-address-current',  emp.address ? emp.address+', '+emp.city+' '+emp.province+' '+emp.postal : 'Not on file');
-  hint('upd-bank-inst-current',emp.bankInst    ? 'Current: '+emp.bankInst    : 'Not on file');
-  hint('upd-bank-transit-current', emp.bankTransit ? 'Current: '+emp.bankTransit : 'Not on file');
-  hint('upd-bank-acct-current',    emp.bankAcct    ? 'Current (masked): '+emp.bankAcct : 'Not on file');
-  hint('upd-td1-fed-current',  emp.td1Fed   ? 'Current: $'+emp.td1Fed   : 'Not set');
-  hint('upd-td1-prov-current', emp.td1Prov  ? 'Current: $'+emp.td1Prov  : 'Not set');
-  hint('upd-extra-tax-current',emp.extraTax ? 'Current: $'+emp.extraTax : 'None');
-  hint('upd-rate-current',     emp.rate     ? 'Current: $'+emp.rate+(emp.payType==='hourly'?'/hr':'/yr') : '');
-
-  // Clear all inputs
-  ['upd-email','upd-phone','upd-address','upd-city','upd-postal',
-   'upd-bank-inst','upd-bank-transit','upd-bank-acct',
-   'upd-td1-fed','upd-td1-prov','upd-extra-tax','upd-rate','upd-rate-date','upd-reason'
-  ].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('upd-province').value='';
-  document.getElementById('upd-bank-type').value='';
-  const bc=document.getElementById('upd-bank-void'); if(bc) bc.checked=false;
-  const uc=document.getElementById('upd-confirm');  if(uc) uc.checked=false;
-
-  showPage('pg-update-employee');
-}
-
-async function submitEmployeeUpdate() {
-  const reason = document.getElementById('upd-reason').value.trim();
-  const confirm= document.getElementById('upd-confirm').checked;
-  let valid = true;
-  if (!reason)   { showErr('err-upd-reason','upd-reason');   valid=false; } else clearErr('err-upd-reason','upd-reason');
-  if (!confirm)  { showErr('err-upd-confirm','upd-confirm'); valid=false; } else clearErr('err-upd-confirm','upd-confirm');
-  if (!valid) return;
-
-  const empId = window._updatingEmpId;
-  const emps  = db.employees ? Object.values(db.employees) : [];
-  const emp   = emps.find(e=>e.id===empId);
-  if (!emp) return;
-
-  // Build change log — only include fields that were filled in
-  const changes = {};
-  const v = id => document.getElementById(id)?.value?.trim();
-
-  if (v('upd-email'))       changes.email     = { old: emp.email||'',        new: v('upd-email') };
-  if (v('upd-phone'))       changes.phone     = { old: emp.phone||'',        new: v('upd-phone') };
-  if (v('upd-address'))     changes.address   = { old: emp.address||'',      new: v('upd-address') };
-  if (v('upd-city'))        changes.city      = { old: emp.city||'',         new: v('upd-city') };
-  if (v('upd-province'))    changes.province  = { old: emp.province||'',     new: v('upd-province') };
-  if (v('upd-postal'))      changes.postal    = { old: emp.postal||'',       new: v('upd-postal') };
-
-  // Banking — only if all 3 are provided
-  const bi=v('upd-bank-inst'), bt=v('upd-bank-transit'), ba=v('upd-bank-acct');
-  if (bi||bt||ba) {
-    if (!bi||!bt||!ba) {
-      alert('Banking changes require all three fields: Institution #, Transit #, and Account #.');
-      return;
-    }
-    changes.bankInst    = { old: emp.bankInst||'',    new: bi };
-    changes.bankTransit = { old: emp.bankTransit||'', new: bt };
-    changes.bankAcct    = { old: emp.bankAcct||'',    new: '****'+ba.slice(-3), newFull: ba };
-    if (v('upd-bank-type'))
-      changes.bankType  = { old: emp.bankType||'',    new: v('upd-bank-type') };
-  }
-
-  if (v('upd-td1-fed'))    changes.td1Fed    = { old: emp.td1Fed||'',    new: v('upd-td1-fed') };
-  if (v('upd-td1-prov'))   changes.td1Prov   = { old: emp.td1Prov||'',   new: v('upd-td1-prov') };
-  if (v('upd-extra-tax'))  changes.extraTax  = { old: emp.extraTax||'0', new: v('upd-extra-tax') };
-  if (v('upd-rate')) {
-    changes.rate       = { old: emp.rate||'', new: v('upd-rate'), effectiveDate: v('upd-rate-date')||'Immediately' };
-  }
-
-  if (Object.keys(changes).length === 0) {
-    alert('No changes detected. Please fill in at least one field you want to update.');
-    return;
-  }
-
-  // Submit as a change-request submission
-  const subId = 'upd'+Date.now();
-  if (!db.submissions) db.submissions = {};
-  db.submissions[subId] = {
-    id: subId,
-    type: 'update',
-    clientId: currentClientId,
-    empId: empId,
-    empName: emp.first+' '+emp.last,
-    submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
-    submittedTime: new Date().toISOString(),
-    status: 'new',
-    reason: reason,
-    changes: changes,
-    changeCount: Object.keys(changes).length,
-    note: Object.keys(changes).length+' field(s) changed: '+Object.keys(changes).join(', ')
-  };
-
-  await saveData(db);
-
-  document.getElementById('success-title').textContent = 'Update Submitted!';
-  document.getElementById('success-msg').textContent =
-    Object.keys(changes).length+' change(s) for '+emp.first+' '+emp.last+' sent to your accountant. They will apply the updates before the next payroll run.';
-  showPage('pg-success');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  HISTORY
 // ══════════════════════════════════════════════════════════════════════════
 function loadHistory() {
-  const subs  = db.submissions ? Object.values(db.submissions).filter(s=>s.clientId===currentClientId) : [];
+  const subs = db.submissions.filter(s => s.clientId === currentClientId);
   const tbody = document.getElementById('history-tbody');
   tbody.innerHTML = '';
-  if (!subs.length) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--ink-muted)">No submissions yet.</td></tr>'; return; }
+  if (!subs.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--ink-muted)">No submissions yet.</td></tr>';
+    return;
+  }
   [...subs].reverse().forEach(s => {
     const tr = document.createElement('tr');
-    const type   = s.type==='payroll' ? 'Payroll Run' : s.type==='update' ? '✏ Info Update' : 'New Employee';
-    const period = s.type==='payroll' ? s.period : s.type==='update' ? s.empName+' ('+s.changeCount+' change(s))' : s.empName+' starts '+s.startDate;
-    const stCls  = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
-    const stLbl  = s.status==='done'?'Processed':s.status==='review'?'Under Review':'Received';
+    const type = s.type === 'payroll' ? '📋 Payroll Run' : '👤 New Employee';
+    const period = s.type === 'payroll' ? s.period : (s.empName + ' · starts ' + s.startDate);
+    const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
+    const statusLbl = s.status==='done'?'Processed':s.status==='review'?'Under Review':'Received';
     tr.innerHTML = `<td>${type}</td><td>${period}</td><td>${s.submitted}</td>
-      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${stLbl}</span></td>
-      <td style="color:var(--ink-muted);font-size:13px">${s.note||''}</td>`;
+      <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
+      <td style="color:var(--ink-muted);font-size:13px">${s.note||'—'}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -2296,32 +1667,21 @@ function loadHistory() {
 function loadAdminDashboard() {
   document.getElementById('admin-date').textContent = new Date().toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  // Show Firebase banner if not configured
-  document.getElementById('firebase-setup-banner').style.display = usingFirebase ? 'none' : 'flex';
-
-  const allSubs     = db.submissions ? Object.values(db.submissions) : [];
-  const payrolls    = allSubs.filter(s=>s.type==='payroll');
-  const newEmps     = allSubs.filter(s=>s.type==='employee');
-  const empChanges  = allSubs.filter(s=>s.type==='update'&&s.status!=='done');
-  const pending     = allSubs.filter(s=>s.status!=='done');
-  const flagged     = allSubs.filter(s=>s.flags>0);
-  const clients     = db.clients    ? Object.values(db.clients)    : [];
-  const syncStatus  = usingFirebase ? '<span style="color:var(--teal)">Cloud Sync ON</span>' : '<span style="color:var(--gold-dk)">Local Only</span>';
-
-  // Update changes badge
-  const changesBadge = document.getElementById('changes-badge');
-  if (changesBadge) changesBadge.textContent = empChanges.length > 0 ? empChanges.length : '';
+  const payrolls = db.submissions.filter(s => s.type==='payroll');
+  const newEmps  = db.submissions.filter(s => s.type==='employee');
+  const pending  = db.submissions.filter(s => s.status!=='done');
+  const flags    = db.submissions.filter(s => s.flags > 0);
 
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card accent-navy">
       <div class="stat-label">Total Clients</div>
-      <div class="stat-value">${clients.length}</div>
-      <div class="stat-sub">${syncStatus}</div>
+      <div class="stat-value">${db.clients.length}</div>
+      <div class="stat-sub">Active companies</div>
     </div>
     <div class="stat-card accent-gold">
       <div class="stat-label">Pending Review</div>
       <div class="stat-value">${pending.length}</div>
-      <div class="stat-sub">Awaiting your action</div>
+      <div class="stat-sub">Submissions awaiting action</div>
     </div>
     <div class="stat-card accent-teal">
       <div class="stat-label">New Employees</div>
@@ -2329,9 +1689,9 @@ function loadAdminDashboard() {
       <div class="stat-sub">Onboarding submissions</div>
     </div>
     <div class="stat-card accent-red">
-      <div class="stat-label">Employee Changes</div>
-      <div class="stat-value">${empChanges.length}</div>
-      <div class="stat-sub">Pending updates to apply</div>
+      <div class="stat-label">OT Flags</div>
+      <div class="stat-value">${flags.length}</div>
+      <div class="stat-sub">Overtime alerts to verify</div>
     </div>
   `;
 
@@ -2339,20 +1699,22 @@ function loadAdminDashboard() {
   const ptbody = document.getElementById('admin-payroll-tbody');
   ptbody.innerHTML = '';
   payrolls.forEach(s => {
-    const client = clients.find(c=>c.id===s.clientId);
-    const stCls  = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
-    const stLbl  = s.status==='done'?'Processed':s.status==='review'?'Flagged':'New';
+    const client = db.clients.find(c=>c.id===s.clientId);
+    const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
+    const statusLbl = s.status==='done'?'Processed':s.status==='review'?'Flagged':'New';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${client?.name||''}</strong></td>
-      <td>${s.period}${s.payDate?' (pay '+s.payDate+')':''}</td>
-      <td>${s.submitted}</td><td>${s.empCount}</td>
-      <td>${s.flags>0?'<span class="status-badge status-review">'+s.flags+' flag(s)</span>':'<span style="color:var(--teal)">Clean</span>'}</td>
-      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${stLbl}</span></td>
-      <td style="white-space:nowrap">
+      <td><strong>${client?.name||'—'}</strong></td>
+      <td>${s.period}</td>
+      <td>${s.submitted}</td>
+      <td>${s.empCount}</td>
+      <td>${s.flags>0?`<span class="status-badge status-review">⚠ ${s.flags} flag(s)</span>`:'<span style="color:var(--teal)">✓ Clean</span>'}</td>
+      <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
+      <td>
         <button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Done</button>
-        <button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="exportPayroll('${s.id}')">Export</button>
-      </td>`;
+        <button class="btn btn-sm btn-outline" style="margin-left:6px" onclick="exportOne('${s.id}')">Export</button>
+      </td>
+    `;
     ptbody.appendChild(tr);
   });
 
@@ -2360,341 +1722,81 @@ function loadAdminDashboard() {
   const etbody = document.getElementById('admin-emp-tbody');
   etbody.innerHTML = '';
   newEmps.forEach(s => {
-    const client = clients.find(c=>c.id===s.clientId);
-    const stCls  = s.status==='done'?'status-done':'status-new';
+    const client = db.clients.find(c=>c.id===s.clientId);
+    const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
+    const statusLbl = s.status==='done'?'Set Up':'New';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${client?.name||''}</strong></td>
-      <td>${s.empName}</td><td>${s.startDate||''}</td>
-      <td><span class="status-badge ${s.banking==='Provided'?'status-done':'status-review'}">${s.banking||''}</span></td>
-      <td><span class="status-badge ${s.td1==='Provided'?'status-done':'status-review'}">${s.td1||''}</span></td>
+      <td><strong>${client?.name||'—'}</strong></td>
+      <td>${s.empName}</td>
+      <td>${s.startDate||'—'}</td>
+      <td><span class="status-badge ${s.banking?.includes('✓')?'status-done':'status-review'}">${s.banking||'—'}</span></td>
+      <td><span class="status-badge ${s.td1?.includes('✓')?'status-done':'status-review'}">${s.td1||'—'}</span></td>
       <td>${s.submitted}</td>
-      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${s.status==='done'?'Set Up':'New'}</span></td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Set Up</button>
-        <button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="exportEmployee('${s.id}')">Export</button>
-      </td>`;
+      <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
+      <td><button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Set Up</button></td>
+    `;
     etbody.appendChild(tr);
   });
 
   // Clients tab
   const ctbody = document.getElementById('admin-clients-tbody');
   ctbody.innerHTML = '';
-  clients.forEach(c => {
-    const empCount = db.employees ? Object.values(db.employees).filter(e=>e.clientId===c.id).length : 0;
-    const lastSub  = [...(db.submissions?Object.values(db.submissions):[])]
-                     .filter(s=>s.clientId===c.id).pop();
+  db.clients.forEach(c => {
+    const empCount = db.employees.filter(e=>e.clientId===c.id).length;
+    const lastSub  = [...db.submissions].filter(s=>s.clientId===c.id).pop();
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><strong>${c.name}</strong></td>
+    tr.innerHTML = `
+      <td><strong>${c.name}</strong></td>
       <td><code style="background:var(--surface-3);padding:2px 8px;border-radius:4px;font-size:12px">${c.code}</code></td>
-      <td>${empCount}</td><td>${lastSub?.submitted||'No submissions yet'}</td>
-      <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>`;
+      <td>${empCount}</td>
+      <td>${lastSub?.submitted||'No submissions yet'}</td>
+      <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>
+    `;
     ctbody.appendChild(tr);
   });
 }
 
 function switchTab(id) {
-  document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
+  document.querySelectorAll('.tab-content').forEach(t => t.style.display='none');
   document.getElementById(id).style.display='block';
-  document.querySelectorAll('.admin-tab').forEach((b,i)=>{
-    b.classList.toggle('active',['tab-payroll','tab-employees','tab-changes','tab-clients'][i]===id);
-  });
-  if (id==='tab-changes') loadChangesTab();
-}
-
-function loadChangesTab() {
-  const allSubs  = db.submissions ? Object.values(db.submissions) : [];
-  const changes  = allSubs.filter(s=>s.type==='update').sort((a,b)=>new Date(b.submittedTime||b.submitted)-new Date(a.submittedTime||a.submitted));
-  const clients  = db.clients ? Object.values(db.clients) : [];
-  const tbody    = document.getElementById('admin-changes-tbody');
-  tbody.innerHTML = '';
-
-  if (!changes.length) {
-    tbody.innerHTML='<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--ink-muted)">No employee change requests yet.</td></tr>';
-    return;
-  }
-
-  changes.forEach(s => {
-    const client  = clients.find(c=>c.id===s.clientId);
-    const stCls   = s.status==='done'?'status-done':'status-new';
-    const stLbl   = s.status==='done'?'Applied':'Pending';
-    const chgs    = s.changes || {};
-    const fieldNames = {
-      email:'Email', phone:'Phone', address:'Address', city:'City', province:'Province', postal:'Postal',
-      bankInst:'Bank Institution', bankTransit:'Bank Transit', bankAcct:'Bank Account', bankType:'Account Type',
-      td1Fed:'TD1 Federal', td1Prov:'TD1 Provincial', extraTax:'Extra Tax', rate:'Pay Rate'
-    };
-
-    // Build change summary HTML
-    const changeRows = Object.entries(chgs).map(([key, val]) => {
-      const label = fieldNames[key] || key;
-      const oldVal = val.old || '—';
-      const newVal = key==='rate' ? '$'+val.new+(val.effectiveDate?' (eff. '+val.effectiveDate+')':'') :
-                     key==='bankAcct' ? '****'+val.newFull?.slice(-3)||val.new : val.new;
-      return '<div style="font-size:12px;margin-bottom:3px"><strong>'+label+':</strong> <span style="color:var(--ink-muted);text-decoration:line-through">'+oldVal+'</span> → <span style="color:var(--teal);font-weight:600">'+newVal+'</span></div>';
-    }).join('');
-
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${client?.name||''}</strong></td>
-      <td><strong>${s.empName}</strong><div class="text-small text-muted">${s.reason||''}</div></td>
-      <td><span class="status-badge status-review">${s.changeCount||Object.keys(chgs).length} field(s)</span></td>
-      <td style="min-width:280px">${changeRows}</td>
-      <td style="white-space:nowrap">${s.submitted}</td>
-      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${stLbl}</span></td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-sm btn-teal" onclick="applyEmpChange('${s.id}')">Apply &amp; Done</button>
-        <button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="exportChange('${s.id}')">Export</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
+  document.querySelectorAll('.admin-tab').forEach((b,i) => {
+    const ids = ['tab-payroll','tab-employees','tab-clients'];
+    b.classList.toggle('active', ids[i]===id);
   });
 }
 
-async function applyEmpChange(subId) {
-  const subs = db.submissions ? Object.values(db.submissions) : [];
-  const s    = subs.find(x=>x.id===subId);
-  if (!s||!s.changes) return;
-
-  // Apply changes to the employee record
-  const emps = db.employees ? Object.values(db.employees) : [];
-  const emp  = emps.find(e=>e.id===s.empId);
-  if (emp && db.employees) {
-    const chgs = s.changes;
-    if (chgs.email)       { emp.email       = chgs.email.new; }
-    if (chgs.phone)       { emp.phone       = chgs.phone.new; }
-    if (chgs.address)     { emp.address     = chgs.address.new; }
-    if (chgs.city)        { emp.city        = chgs.city.new; }
-    if (chgs.province)    { emp.province    = chgs.province.new; }
-    if (chgs.postal)      { emp.postal      = chgs.postal.new; }
-    if (chgs.bankInst)    { emp.bankInst    = chgs.bankInst.new;    emp.banking = true; }
-    if (chgs.bankTransit) { emp.bankTransit = chgs.bankTransit.new; }
-    if (chgs.bankAcct)    { emp.bankAcct    = chgs.bankAcct.new; }
-    if (chgs.bankType)    { emp.bankType    = chgs.bankType.new; }
-    if (chgs.td1Fed)      { emp.td1Fed      = chgs.td1Fed.new;   emp.td1 = true; }
-    if (chgs.td1Prov)     { emp.td1Prov     = chgs.td1Prov.new; }
-    if (chgs.extraTax)    { emp.extraTax    = chgs.extraTax.new; }
-    if (chgs.rate)        { emp.rate        = parseFloat(chgs.rate.new); }
-    db.employees[emp.id] = emp;
-  }
-
-  // Mark submission done
-  if (db.submissions[subId]) db.submissions[subId].status = 'done';
-  else Object.values(db.submissions).forEach(x=>{ if(x.id===subId) x.status='done'; });
-
-  await saveData(db);
-  loadChangesTab();
-  // Refresh badge
-  const pending = Object.values(db.submissions||{}).filter(s=>s.type==='update'&&s.status!=='done').length;
-  const badge = document.getElementById('changes-badge');
-  if (badge) badge.textContent = pending > 0 ? pending : '';
+function markDone(subId) {
+  const s = db.submissions.find(x=>x.id===subId);
+  if (s) { s.status='done'; s.note='Processed ✓'; saveData(db); loadAdminDashboard(); }
 }
 
-function exportChange(subId) {
-  const subs  = db.submissions ? Object.values(db.submissions) : [];
-  const s     = subs.find(x=>x.id===subId);
+function exportOne(subId) {
+  const s = db.submissions.find(x=>x.id===subId);
   if (!s) return;
-  const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
-  const chgs   = s.changes || {};
-  const fieldNames = {
-    email:'Email', phone:'Phone', address:'Street Address', city:'City', province:'Province', postal:'Postal Code',
-    bankInst:'Bank Institution #', bankTransit:'Bank Transit #', bankAcct:'Bank Account # (masked)', bankType:'Account Type',
-    td1Fed:'TD1 Federal ($)', td1Prov:'TD1 Provincial ($)', extraTax:'Extra Tax/Period ($)', rate:'Pay Rate'
-  };
-
-  let csv = 'FIELD,OLD VALUE,NEW VALUE,EFFECTIVE DATE\n';
-  csv += '"Client","'+( client?.name||'')+'","",""\n';
-  csv += '"Employee","'+s.empName+'","",""\n';
-  csv += '"Submitted","'+s.submitted+'","",""\n';
-  csv += '"Reason","'+s.reason+'","",""\n';
-  csv += '"---","---","---","---"\n';
-  Object.entries(chgs).forEach(([key,val]) => {
-    const label = fieldNames[key]||key;
-    const newDisp = key==='bankAcct' ? (val.newFull ? val.newFull : val.new) : val.new;
-    const eff = key==='rate' ? (val.effectiveDate||'Immediately') : '';
-    csv += '"'+label+'","'+(val.old||'')+'","'+(newDisp||'')+'","'+eff+'"\n';
+  const client = db.clients.find(c=>c.id===s.clientId);
+  const emps = db.employees.filter(e=>e.clientId===s.clientId);
+  let csv = 'Client,Period,Employee,Type,Pay Type,Rate\n';
+  emps.forEach(e => {
+    csv += `"${client?.name}","${s.period}","${e.first} ${e.last}","${e.type}","${e.payType}","${e.rate}"\n`;
   });
-  downloadCSV(csv, 'emp-change-'+s.empName.replace(/\s+/g,'-')+'-'+Date.now()+'.csv');
-}
-
-async function markDone(subId) {
-  const subs = db.submissions||{};
-  if (subs[subId]) { subs[subId].status='done'; subs[subId].note='Processed'; }
-  else {
-    // try to find by searching
-    Object.values(subs).forEach(s=>{ if(s.id===subId){s.status='done';s.note='Processed';} });
-  }
-  await saveData(db);
-  loadAdminDashboard();
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  EXPORTS — COMPREHENSIVE
-// ══════════════════════════════════════════════════════════════════════════
-function exportPayroll(subId) {
-  const subs = db.submissions ? Object.values(db.submissions) : [];
-  const s = subs.find(x=>x.id===subId);
-  if (!s||!s.hours) { alert('No hours data found for this submission.'); return; }
-  const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
-
-  let csv = 'CLIENT,PAY PERIOD,PAY DATE,EMPLOYEE,TITLE,EMP TYPE,PAY TYPE,RATE,REG HOURS,OT HOURS,VACATION PAY ($),STAT HOLIDAY,OTHER/BONUS ($),GROSS PAY ($)\n';
-  Object.values(s.hours).forEach(h => {
-    csv += `"${client?.name||''}","${s.period}","${s.payDate||''}","${h.empName}","${h.title}","${h.type}","${h.payType}","${h.rate}","${h.reg}","${h.ot}","${h.vac}","${h.stat?'Yes':'No'}","${h.other}","${h.grossPay}"\n`;
-  });
-  if (s.notes) csv += `\n"Notes:","${s.notes}"\n`;
-  downloadCSV(csv, 'payroll-'+( client?.code||'client')+'-'+s.ppStart+'.csv');
-}
-
-function exportEmployee(subId) {
-  const subs = db.submissions ? Object.values(db.submissions) : [];
-  const s    = subs.find(x=>x.id===subId);
-  if (!s) return;
-  const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
-  const d = s.empDetails || {};
-
-  const fields = [
-    ['CLIENT',                   client?.name       || ''],
-    ['SUBMITTED',                s.submitted        || ''],
-    ['--- PERSONAL INFORMATION','---'],
-    ['FIRST NAME',               d.first            || ''],
-    ['LAST NAME',                d.last             || ''],
-    ['FULL NAME',                (d.first||'')+' '+(d.last||'')],
-    ['DATE OF BIRTH',            d.dob              || ''],
-    ['SIN (FULL)',                d.sin              || '(not captured — re-submit)'],
-    ['SIN (MASKED)',              d.sinMasked        || ''],
-    ['EMAIL',                    d.email            || ''],
-    ['PHONE',                    d.phone            || ''],
-    ['--- ADDRESS',              '---'],
-    ['FULL ADDRESS',             d.address          || ''],
-    ['--- BANKING INFORMATION',  '---'],
-    ['BANK INSTITUTION #',       d.bankInst         || ''],
-    ['BANK TRANSIT #',           d.bankTransit      || ''],
-    ['BANK ACCOUNT # (FULL)',     d.bankAcctFull     || '(masked only — see below)'],
-    ['BANK ACCOUNT # (MASKED)',   d.bankAcct         || ''],
-    ['ACCOUNT TYPE',             d.bankType         || ''],
-    ['--- EMPLOYMENT DETAILS',   '---'],
-    ['START DATE',               s.startDate        || ''],
-    ['JOB TITLE',                d.title            || ''],
-    ['EMPLOYMENT TYPE',          d.type             || ''],
-    ['PAY TYPE',                 d.payType          || ''],
-    ['RATE ($)',                  d.rate             || ''],
-    ['PAY FREQUENCY',            d.freq             || ''],
-    ['--- TAX INFORMATION',      '---'],
-    ['TD1 FEDERAL ($)',           d.td1Fed           || ''],
-    ['TD1 PROVINCIAL ($)',        d.td1Prov          || ''],
-    ['EXTRA TAX PER PERIOD ($)',  d.extraTax         || '0'],
-    ['--- NOTES',                '---'],
-    ['ACCOUNTANT NOTES',         s.note             || ''],
-  ];
-
-  let csv = 'FIELD,VALUE\n';
-  fields.forEach(([k,v]) => { csv += '"'+k+'","'+(v||'').toString().replace(/"/g,"''")+'"\n'; });
-  downloadCSV(csv, 'EMPLOYEE-'+s.empName.replace(/\s+/g,'-')+'-'+new Date().toISOString().slice(0,10)+'.csv');
-}
-
-function exportAllEmployees() {
-  const emps    = db.employees    ? Object.values(db.employees)    : [];
-  const clients = db.clients      ? Object.values(db.clients)      : [];
-  const subs    = db.submissions  ? Object.values(db.submissions).filter(s=>s.type==='employee') : [];
-
-  // Build enriched employee list — merge roster record with submission empDetails for full data
-  const rows = emps.map(e => {
-    const c    = clients.find(x=>x.id===e.clientId) || {};
-    // Find matching submission for extra details (full SIN, full bank acct)
-    const sub  = subs.find(s => s.empName === e.first+' '+e.last && s.clientId === e.clientId) || {};
-    const d    = sub.empDetails || {};
-    return {
-      client:       c.name        || '',
-      clientCode:   c.code        || '',
-      firstName:    e.first       || d.first      || '',
-      lastName:     e.last        || d.last       || '',
-      dob:          e.dob         || d.dob        || '',
-      sin:          e.sin         || d.sin        || '',
-      sinMasked:    e.sinMasked   || d.sinMasked  || '',
-      email:        e.email       || d.email      || '',
-      phone:        e.phone       || d.phone      || '',
-      address:      e.address     || '',
-      city:         e.city        || '',
-      province:     e.province    || '',
-      postal:       e.postal      || '',
-      fullAddress:  d.address     || ((e.address||'') + (e.city?', '+e.city:'') + (e.province?' '+e.province:'') + (e.postal?' '+e.postal:'')),
-      startDate:    e.startDate   || sub.startDate || '',
-      title:        e.title       || d.title      || '',
-      empType:      e.type        || d.type       || '',
-      payType:      e.payType     || d.payType    || '',
-      rate:         e.rate        || d.rate       || '',
-      freq:         e.freq        || d.freq       || '',
-      bankInst:     e.bankInst    || d.bankInst   || '',
-      bankTransit:  e.bankTransit || d.bankTransit|| '',
-      bankAcct:     d.bankAcctFull|| e.bankInst ? (d.bankAcctFull||e.bankAcct||'') : '',
-      bankAcctMask: e.bankAcct    || d.bankAcct   || '',
-      bankType:     e.bankType    || d.bankType   || '',
-      td1Fed:       e.td1Fed      || d.td1Fed     || '',
-      td1Prov:      e.td1Prov     || d.td1Prov    || '',
-      extraTax:     e.extraTax    || d.extraTax   || '0',
-      bankOnFile:   e.banking     ? 'Yes' : 'No',
-      td1OnFile:    e.td1         ? 'Yes' : 'No',
-      notes:        e.notes       || '',
-      status:       e.status      || 'active',
-    };
-  });
-
-  // Header
-  const headers = [
-    'CLIENT','CLIENT CODE',
-    'LAST NAME','FIRST NAME',
-    'DATE OF BIRTH','SIN (FULL)','SIN (MASKED)',
-    'EMAIL','PHONE',
-    'STREET ADDRESS','CITY','PROVINCE','POSTAL CODE','FULL ADDRESS',
-    'START DATE','JOB TITLE','EMPLOYMENT TYPE','PAY TYPE','RATE ($)','PAY FREQUENCY',
-    'BANK INSTITUTION #','BANK TRANSIT #','BANK ACCOUNT # (FULL)','BANK ACCOUNT # (MASKED)','ACCOUNT TYPE',
-    'TD1 FEDERAL ($)','TD1 PROVINCIAL ($)','EXTRA TAX/PERIOD ($)',
-    'BANKING ON FILE','TD1 ON FILE','NOTES','STATUS'
-  ];
-
-  let csv = headers.map(h=>'"'+h+'"').join(',') + '\n';
-  rows.forEach(r => {
-    csv += [
-      r.client, r.clientCode,
-      r.lastName, r.firstName,
-      r.dob, r.sin, r.sinMasked,
-      r.email, r.phone,
-      r.address, r.city, r.province, r.postal, r.fullAddress,
-      r.startDate, r.title, r.empType, r.payType, r.rate, r.freq,
-      r.bankInst, r.bankTransit, r.bankAcct, r.bankAcctMask, r.bankType,
-      r.td1Fed, r.td1Prov, r.extraTax,
-      r.bankOnFile, r.td1OnFile, r.notes, r.status
-    ].map(v=>'"'+(v||'').toString().replace(/"/g,"''")+'"').join(',') + '\n';
-  });
-
-  downloadCSV(csv, 'ALL-EMPLOYEES-COMPLETE-'+new Date().toISOString().slice(0,10)+'.csv');
+  downloadCSV(csv, `payroll-${client?.code}-${Date.now()}.csv`);
 }
 
 function exportAll() {
-  // Export full summary of all submissions
-  let csv = 'CLIENT,TYPE,PERIOD / EMPLOYEE,PAY DATE,SUBMITTED,EMP COUNT,FLAGS,STATUS,NOTES\n';
-  const subs    = db.submissions ? Object.values(db.submissions) : [];
-  const clients = db.clients    ? Object.values(db.clients)    : [];
-  subs.forEach(s => {
-    const c      = clients.find(x=>x.id===s.clientId);
+  let csv = 'Client,Type,Period/Employee,Submitted,Status,Notes\n';
+  db.submissions.forEach(s => {
+    const c = db.clients.find(x=>x.id===s.clientId);
     const detail = s.type==='payroll' ? s.period : s.empName;
-    csv += `"${c?.name||''}","${s.type}","${detail}","${s.payDate||''}","${s.submitted}","${s.empCount||''}","${s.flags||0}","${s.status}","${s.note||''}"\n`;
+    csv += `"${c?.name||''}","${s.type}","${detail}","${s.submitted}","${s.status}","${s.note||''}"\n`;
   });
-  csv += '\n\n--- PAYROLL DETAIL ---\n';
-  subs.filter(s=>s.type==='payroll'&&s.hours).forEach(s => {
-    const c = clients.find(x=>x.id===s.clientId);
-    csv += '\n"CLIENT","PERIOD","EMPLOYEE","TYPE","PAY TYPE","RATE","REG HRS","OT HRS","VAC PAY","STAT","OTHER","GROSS PAY"\n';
-    Object.values(s.hours).forEach(h=>{
-      csv += `"${c?.name||''}","${s.period}","${h.empName}","${h.type}","${h.payType}","${h.rate}","${h.reg}","${h.ot}","${h.vac}","${h.stat?'Yes':'No'}","${h.other}","${h.grossPay}"\n`;
-    });
-  });
-  downloadCSV(csv, 'paysync-full-export-'+Date.now()+'.csv');
+  downloadCSV(csv, `paysync-export-${Date.now()}.csv`);
 }
 
 function downloadCSV(csv, filename) {
   const blob = new Blob([csv], {type:'text/csv'});
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
 }
@@ -2703,45 +1805,43 @@ function downloadCSV(csv, filename) {
 //  MANAGE CLIENTS
 // ══════════════════════════════════════════════════════════════════════════
 function loadManageClients() {
-  const tbody   = document.getElementById('clients-manage-tbody');
-  const clients = db.clients ? Object.values(db.clients) : [];
+  const tbody = document.getElementById('clients-manage-tbody');
   tbody.innerHTML = '';
-  clients.forEach(c => {
-    const empCount = db.employees ? Object.values(db.employees).filter(e=>e.clientId===c.id).length : 0;
+  db.clients.forEach(c => {
+    const empCount = db.employees.filter(e=>e.clientId===c.id).length;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td><strong>${c.name}</strong></td>
+    tr.innerHTML = `
+      <td><strong>${c.name}</strong></td>
       <td><code style="background:var(--surface-3);padding:2px 8px;border-radius:4px">${c.code}</code></td>
-      <td>${c.freq}</td><td>${empCount}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="removeClient('${c.id}')">Remove</button></td>`;
+      <td>${c.freq}</td>
+      <td>${empCount}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeClient('${c.id}')">Remove</button></td>
+    `;
     tbody.appendChild(tr);
   });
 }
 
-async function addClient() {
+function addClient() {
   const name = document.getElementById('new-client-name').value.trim();
   const code = document.getElementById('new-client-code').value.trim().toUpperCase();
   const freq = document.getElementById('new-client-freq').value;
-  if (!name||!code) { alert('Company name and access code required.'); return; }
-  const clients = db.clients ? Object.values(db.clients) : [];
-  if (clients.find(c=>c.code===code)) { alert('Code already in use.'); return; }
-  const id = 'c'+Date.now();
-  if (!db.clients) db.clients = {};
-  db.clients[id] = { id, name, code, freq };
-  await saveData(db);
+  if (!name || !code) { alert('Company name and access code are required.'); return; }
+  if (db.clients.find(c=>c.code===code)) { alert('That code is already in use. Choose a different one.'); return; }
+  db.clients.push({ id:'c'+Date.now(), name, code, freq });
+  saveData(db);
   document.getElementById('new-client-name').value='';
   document.getElementById('new-client-code').value='';
-  const msg = document.getElementById('add-client-msg');
-  msg.style.display='block';
-  setTimeout(()=>msg.style.display='none',2500);
+  document.getElementById('add-client-msg').style.display='block';
+  setTimeout(()=>document.getElementById('add-client-msg').style.display='none', 2500);
   loadManageClients();
 }
 
-async function removeClient(id) {
-  if (!confirm('Remove this client? Their data will also be removed.')) return;
-  if (db.clients)     delete db.clients[id];
-  if (db.employees)   Object.keys(db.employees).forEach(k=>{ if(db.employees[k].clientId===id) delete db.employees[k]; });
-  if (db.submissions) Object.keys(db.submissions).forEach(k=>{ if(db.submissions[k].clientId===id) delete db.submissions[k]; });
-  await saveData(db);
+function removeClient(id) {
+  if (!confirm('Remove this client? Their employees and submissions will also be removed.')) return;
+  db.clients     = db.clients.filter(c=>c.id!==id);
+  db.employees   = db.employees.filter(e=>e.clientId!==id);
+  db.submissions = db.submissions.filter(s=>s.clientId!==id);
+  saveData(db);
   loadManageClients();
 }
 
@@ -2750,19 +1850,22 @@ async function removeClient(id) {
 // ══════════════════════════════════════════════════════════════════════════
 function formatSIN(el) {
   let v = el.value.replace(/\D/g,'').substring(0,9);
-  if (v.length>6) el.value=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
-  else if (v.length>3) el.value=v.slice(0,3)+'-'+v.slice(3);
-  else el.value=v;
+  if (v.length > 6)      el.value = v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
+  else if (v.length > 3) el.value = v.slice(0,3)+'-'+v.slice(3);
+  else                   el.value = v;
 }
+
 function formatPostal(el) {
-  let v=el.value.replace(/\s/g,'').toUpperCase().substring(0,6);
-  if(v.length>3) el.value=v.slice(0,3)+' '+v.slice(3); else el.value=v;
+  let v = el.value.replace(/\s/g,'').toUpperCase().substring(0,6);
+  if (v.length > 3) el.value = v.slice(0,3)+' '+v.slice(3);
+  else              el.value = v;
 }
+
 function togglePayRate() {
-  const t=document.getElementById('emp-pay-type').value;
-  document.getElementById('rate-label').innerHTML=(t==='salary'?'Annual Salary':'Hourly Rate')+' <span class="req">*</span>';
-  document.getElementById('rate-help').textContent=t==='salary'?'Annual salary in CAD':'Hourly rate in CAD';
-  document.getElementById('emp-rate').placeholder=t==='salary'?'65000':'22.50';
+  const t = document.getElementById('emp-pay-type').value;
+  document.getElementById('rate-label').innerHTML = (t==='salary'?'Annual Salary':'Hourly Rate') + ' <span class="req">*</span>';
+  document.getElementById('rate-help').textContent = t==='salary' ? 'Annual salary in CAD' : 'Hourly rate in CAD';
+  document.getElementById('emp-rate').placeholder = t==='salary' ? '65000' : '22.50';
 }
 </script>
 </body>
