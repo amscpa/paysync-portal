@@ -6,6 +6,12 @@
 <title>PaySync — Payroll Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, get, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+  window._fbModules = { initializeApp, getDatabase, ref, set, get, onValue, remove };
+</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1128,7 +1134,8 @@
   <div class="topbar">
     <div class="topbar-brand"><div class="topbar-logo">P</div><span class="topbar-name">Pay<span>Sync</span> <span style="font-size:12px;background:var(--gold);border-radius:4px;padding:2px 8px;margin-left:6px">ADMIN</span></span></div>
     <div class="topbar-actions">
-      <button class="btn-ghost-white btn-sm" onclick="exportAll()">⬇ Export All (CSV)</button>
+      <button class="btn-ghost-white btn-sm" onclick="exportAllEmployees()">⬇ All Employees</button>
+      <button class="btn-ghost-white btn-sm" onclick="exportAll()">⬇ Full Export</button>
       <button class="btn-ghost-white" onclick="logout()">Sign Out</button>
     </div>
   </div>
@@ -1139,6 +1146,64 @@
         <p class="text-muted">All client submissions · <span id="admin-date"></span></p>
       </div>
       <button class="btn btn-gold btn-sm" onclick="showPage('pg-admin-clients')">Manage Clients →</button>
+    </div>
+
+    <!-- Firebase Setup Banner -->
+    <div id="firebase-setup-banner" class="alert alert-warn mb-24" style="display:none">
+      <span class="alert-icon">&#9729;&#65039;</span>
+      <div style="flex:1">
+        <strong>Cloud Sync Not Configured</strong> &mdash; Currently using browser-only storage. Clients cannot submit from their own computers yet.
+        <button class="btn btn-sm btn-gold" style="margin-left:16px" onclick="showFirebaseSetup()">Configure Cloud Sync &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Firebase Config Modal -->
+    <div id="firebase-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:999;align-items:center;justify-content:center">
+      <div class="card" style="width:560px;max-width:95vw;max-height:90vh;overflow-y:auto">
+        <div class="card-header">
+          <h3>Configure Cloud Sync (Firebase)</h3>
+          <button onclick="closeFirebaseSetup()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--ink-muted)">x</button>
+        </div>
+        <div class="card-body">
+          <div class="alert alert-info" style="margin-bottom:20px">
+            <span class="alert-icon">i</span>
+            <div>Firebase is free from Google. Once set up, your clients submit from their computers and you see it instantly on yours. Takes about 5 minutes.</div>
+          </div>
+          <div class="section-title">Step 1 - Create Firebase Project</div>
+          <ol style="font-size:13px;line-height:2.2;color:var(--ink-soft);padding-left:20px;margin-bottom:20px">
+            <li>Go to <a href="https://console.firebase.google.com" target="_blank" style="color:var(--navy)">console.firebase.google.com</a> and sign in with Google</li>
+            <li>Click <strong>Add project</strong>, name it "paysync", click through</li>
+            <li>In your project, click <strong>Build &gt; Realtime Database</strong> in the left menu</li>
+            <li>Click <strong>Create Database</strong>, choose your region, start in <strong>Test mode</strong></li>
+            <li>Copy your <strong>Database URL</strong> (e.g. https://paysync-xxxxx-default-rtdb.firebaseio.com)</li>
+            <li>Go to <strong>Project Settings (gear icon)</strong> &gt; Your apps &gt; click the Web icon (&lt;/&gt;) &gt; register app</li>
+            <li>Copy the <strong>apiKey</strong> and <strong>projectId</strong> from the firebaseConfig shown</li>
+          </ol>
+          <div class="section-title">Step 2 - Paste Your Credentials</div>
+          <div class="form-group">
+            <label>API Key <span class="req">*</span></label>
+            <input type="text" id="fb-apikey" placeholder="AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXX">
+          </div>
+          <div class="form-group">
+            <label>Project ID <span class="req">*</span></label>
+            <input type="text" id="fb-projectid" placeholder="paysync-xxxxx">
+          </div>
+          <div class="form-group">
+            <label>Database URL <span class="req">*</span></label>
+            <input type="text" id="fb-dburl" placeholder="https://paysync-xxxxx-default-rtdb.firebaseio.com">
+          </div>
+          <div id="fb-error" class="alert alert-error" style="display:none">
+            <span class="alert-icon">!</span><div id="fb-error-text">Could not connect. Check your credentials and make sure Test mode is enabled.</div>
+          </div>
+          <div id="fb-success" class="alert alert-success" style="display:none">
+            <span class="alert-icon">ok</span><div>Connected! Cloud sync is now active. Refreshing...</div>
+          </div>
+          <div class="flex gap-12 mt-24">
+            <button class="btn btn-outline" onclick="closeFirebaseSetup()">Cancel</button>
+            <button class="btn btn-teal" onclick="saveFirebaseConfig()" id="fb-save-btn">Test and Save Connection</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="stats-grid" id="stats-grid">
@@ -1240,38 +1305,81 @@
 
 <script>
 // ══════════════════════════════════════════════════════════════════════════
-//  DATA STORE  (localStorage for persistence)
+//  FIREBASE + LOCAL STORAGE HYBRID DATA LAYER
 // ══════════════════════════════════════════════════════════════════════════
 const ADMIN_PIN = '1234';
+let fbApp = null, fbDb = null, fbRef = null, fbGet = null, fbSet = null, fbOnValue = null, fbRemove = null;
+let usingFirebase = false;
 
-function getData() {
-  const d = localStorage.getItem('paysync');
-  if (d) return JSON.parse(d);
+// Load saved Firebase config
+const savedFbConfig = JSON.parse(localStorage.getItem('paysync_fb_config') || 'null');
+if (savedFbConfig) initFirebase(savedFbConfig);
+
+async function initFirebase(config) {
+  try {
+    await new Promise(r => setTimeout(r, 500)); // wait for module
+    const m = window._fbModules;
+    if (!m) return;
+    fbApp = m.initializeApp(config);
+    fbDb  = m.getDatabase(fbApp);
+    fbRef = m.ref; fbGet = m.get; fbSet = m.set;
+    fbOnValue = m.onValue; fbRemove = m.remove;
+    usingFirebase = true;
+    // Subscribe to live updates
+    fbOnValue(fbRef(fbDb, 'paysync'), snap => {
+      if (snap.exists()) {
+        db = snap.val();
+        // refresh active page
+        const active = document.querySelector('.page.active')?.id;
+        if (active === 'pg-admin') loadAdminDashboard();
+        if (active === 'pg-client-home') loadClientHome();
+      }
+    });
+    console.log('Firebase connected');
+  } catch(e) { console.error('Firebase init error:', e); usingFirebase = false; }
+}
+
+function getSeedData() {
   return {
-    clients: [
-      { id: 'c1', name: 'Smith Construction Ltd.', code: 'SMITH2024', freq: 'biweekly' },
-      { id: 'c2', name: 'Patel Restaurant Group', code: 'PATEL2024', freq: 'weekly' },
-      { id: 'c3', name: 'Northern Auto Services', code: 'NORTHAUTO', freq: 'semimonthly' },
-    ],
-    employees: [
-      { id:'e1', clientId:'c1', first:'James', last:'O\'Brien', title:'Site Supervisor', type:'FT', payType:'hourly', rate:38, banking:true, td1:true, status:'active', startDate:'2023-03-01' },
-      { id:'e2', clientId:'c1', first:'Maria', last:'Santos', title:'Estimator', type:'FT', payType:'salary', rate:72000, banking:true, td1:true, status:'active', startDate:'2022-08-15' },
-      { id:'e3', clientId:'c1', first:'Dylan', last:'Kowalski', title:'Labourer', type:'PT', payType:'hourly', rate:22, banking:false, td1:false, status:'active', startDate:'2024-01-10' },
-      { id:'e4', clientId:'c2', first:'Priya', last:'Sharma', title:'Manager', type:'FT', payType:'salary', rate:58000, banking:true, td1:true, status:'active', startDate:'2023-06-01' },
-      { id:'e5', clientId:'c2', first:'Kevin', last:'Tran', title:'Server', type:'PT', payType:'hourly', rate:16.50, banking:true, td1:false, status:'active', startDate:'2024-02-20' },
-      { id:'e6', clientId:'c3', first:'Sandra', last:'Leblanc', title:'Service Advisor', type:'FT', payType:'hourly', rate:28, banking:true, td1:true, status:'active', startDate:'2021-11-01' },
-    ],
-    submissions: [
-      { id:'s1', type:'payroll', clientId:'c1', period:'Mar 1–14, 2024', submitted:'Mar 15, 2024', empCount:3, flags:0, status:'done', note:'Processed' },
-      { id:'s2', type:'payroll', clientId:'c2', period:'Mar 11–17, 2024', submitted:'Mar 18, 2024', empCount:2, flags:1, status:'review', note:'OT flag on Kevin' },
-      { id:'s3', type:'employee', clientId:'c1', empName:'Dylan Kowalski', startDate:'2024-01-10', banking:'❌ Missing', td1:'❌ Missing', submitted:'Jan 8, 2024', status:'review', note:'Banking info needed' },
-    ]
+    clients: {
+      c1: { id:'c1', name:'Smith Construction Ltd.', code:'SMITH2024', freq:'biweekly' },
+      c2: { id:'c2', name:'Patel Restaurant Group',  code:'PATEL2024', freq:'weekly'   },
+      c3: { id:'c3', name:'Northern Auto Services',  code:'NORTHAUTO', freq:'semimonthly' }
+    },
+    employees: {
+      e1: { id:'e1', clientId:'c1', first:'James',  last:"O'Brien",  title:'Site Supervisor', type:'FT', payType:'hourly', rate:38,    banking:true,  td1:true,  status:'active', startDate:'2023-03-01', email:'james@example.com', phone:'403-555-0100', address:'123 Main St', city:'Calgary', province:'AB', postal:'T2P 1A1', bankInst:'010', bankTransit:'12345', bankAcct:'****789', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'biweekly', notes:'' },
+      e2: { id:'e2', clientId:'c1', first:'Maria',  last:'Santos',   title:'Estimator',       type:'FT', payType:'salary', rate:72000, banking:true,  td1:true,  status:'active', startDate:'2022-08-15', email:'maria@example.com', phone:'403-555-0101', address:'456 Oak Ave', city:'Calgary', province:'AB', postal:'T2E 2B2', bankInst:'004', bankTransit:'22222', bankAcct:'****321', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'biweekly', notes:'' },
+      e3: { id:'e3', clientId:'c1', first:'Dylan',  last:'Kowalski', title:'Labourer',         type:'PT', payType:'hourly', rate:22,    banking:false, td1:false, status:'active', startDate:'2024-01-10', email:'', phone:'', address:'', city:'', province:'', postal:'', bankInst:'', bankTransit:'', bankAcct:'', bankType:'', td1Fed:'', td1Prov:'', freq:'biweekly', notes:'Banking info still needed' },
+      e4: { id:'e4', clientId:'c2', first:'Priya',  last:'Sharma',   title:'Manager',          type:'FT', payType:'salary', rate:58000, banking:true,  td1:true,  status:'active', startDate:'2023-06-01', email:'priya@example.com', phone:'403-555-0200', address:'789 Elm Rd', city:'Calgary', province:'AB', postal:'T3A 3C3', bankInst:'002', bankTransit:'33333', bankAcct:'****456', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'weekly', notes:'' },
+      e5: { id:'e5', clientId:'c2', first:'Kevin',  last:'Tran',     title:'Server',           type:'PT', payType:'hourly', rate:16.5,  banking:true,  td1:false, status:'active', startDate:'2024-02-20', email:'kevin@example.com', phone:'403-555-0201', address:'10 Park Blvd', city:'Calgary', province:'AB', postal:'T2N 4D4', bankInst:'010', bankTransit:'44444', bankAcct:'****654', bankType:'savings',  td1Fed:'15705', td1Prov:'', freq:'weekly', notes:'No provincial TD1 on file' },
+      e6: { id:'e6', clientId:'c3', first:'Sandra', last:'Leblanc',  title:'Service Advisor',  type:'FT', payType:'hourly', rate:28,    banking:true,  td1:true,  status:'active', startDate:'2021-11-01', email:'sandra@example.com', phone:'403-555-0300', address:'22 River Dr', city:'Calgary', province:'AB', postal:'T3B 5E5', bankInst:'003', bankTransit:'55555', bankAcct:'****987', bankType:'chequing', td1Fed:'15705', td1Prov:'21003', freq:'semimonthly', notes:'' }
+    },
+    submissions: {
+      s1: { id:'s1', type:'payroll', clientId:'c1', period:'Mar 1-14, 2024', submitted:'Mar 15, 2024', empCount:3, flags:0, status:'done', note:'Processed', hours:{e1:{reg:80,ot:0,vac:0,stat:false,other:0}, e2:{reg:80,ot:0,vac:0,stat:false,other:0}, e3:{reg:32,ot:0,vac:0,stat:false,other:0}} },
+      s2: { id:'s2', type:'payroll', clientId:'c2', period:'Mar 11-17, 2024', submitted:'Mar 18, 2024', empCount:2, flags:1, status:'review', note:'OT flag on Kevin', hours:{e4:{reg:40,ot:0,vac:0,stat:false,other:0}, e5:{reg:48,ot:4,vac:0,stat:false,other:0}} },
+      s3: { id:'s3', type:'employee', clientId:'c1', empName:'Dylan Kowalski', startDate:'2024-01-10', banking:'Missing', td1:'Missing', submitted:'Jan 8, 2024', status:'review', note:'Banking info needed', empDetails:{} }
+    }
   };
 }
 
-function saveData(d) { localStorage.setItem('paysync', JSON.stringify(d)); }
+function getLocalData() {
+  const d = localStorage.getItem('paysync');
+  if (d) return JSON.parse(d);
+  const seed = getSeedData();
+  localStorage.setItem('paysync', JSON.stringify(seed));
+  return seed;
+}
 
-let db = getData();
+function saveLocalData(d) { localStorage.setItem('paysync', JSON.stringify(d)); }
+
+async function saveData(d) {
+  saveLocalData(d);
+  if (usingFirebase && fbDb) {
+    try { await fbSet(fbRef(fbDb, 'paysync'), d); } catch(e) { console.warn('FB save error:', e); }
+  }
+}
+
+let db = getLocalData();
 let currentClientId = null;
 let currentEmpStep  = 1;
 let empFormData     = {};
@@ -1282,13 +1390,13 @@ let empFormData     = {};
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  if (id === 'pg-client-home') loadClientHome();
-  if (id === 'pg-payroll-run') loadPayrollRun();
+  if (id === 'pg-client-home')    loadClientHome();
+  if (id === 'pg-payroll-run')    loadPayrollRun();
   if (id === 'pg-view-employees') loadRoster();
-  if (id === 'pg-history') loadHistory();
-  if (id === 'pg-admin') loadAdminDashboard();
-  if (id === 'pg-admin-clients') loadManageClients();
-  if (id === 'pg-new-employee') { currentEmpStep=1; showEmpStep(1); empFormData={}; }
+  if (id === 'pg-history')        loadHistory();
+  if (id === 'pg-admin')          loadAdminDashboard();
+  if (id === 'pg-admin-clients')  loadManageClients();
+  if (id === 'pg-new-employee')   { currentEmpStep=1; showEmpStep(1); empFormData={}; }
   window.scrollTo(0,0);
 }
 
@@ -1296,8 +1404,11 @@ function showPage(id) {
 //  LOGIN
 // ══════════════════════════════════════════════════════════════════════════
 function clientLogin() {
+  // refresh from storage first
+  db = usingFirebase ? db : getLocalData();
   const code = document.getElementById('login-code').value.trim().toUpperCase();
-  const client = db.clients.find(c => c.code === code);
+  const clients = db.clients ? Object.values(db.clients) : [];
+  const client = clients.find(c => c.code === code);
   if (!client) {
     document.getElementById('login-error').classList.add('show');
     document.getElementById('login-code').classList.add('error');
@@ -1312,10 +1423,7 @@ function adminLogin() { showPage('pg-admin-login'); }
 
 function verifyAdmin() {
   const pin = document.getElementById('admin-pin').value;
-  if (pin !== ADMIN_PIN) {
-    document.getElementById('admin-pin-error').classList.add('show');
-    return;
-  }
+  if (pin !== ADMIN_PIN) { document.getElementById('admin-pin-error').classList.add('show'); return; }
   currentClientId = 'admin';
   showPage('pg-admin');
 }
@@ -1326,41 +1434,97 @@ document.getElementById('login-code').addEventListener('keydown', e => { if(e.ke
 document.getElementById('admin-pin').addEventListener('keydown', e => { if(e.key==='Enter') verifyAdmin(); });
 
 // ══════════════════════════════════════════════════════════════════════════
+//  FIREBASE SETUP UI
+// ══════════════════════════════════════════════════════════════════════════
+function showFirebaseSetup() {
+  const modal = document.getElementById('firebase-modal');
+  modal.style.display = 'flex';
+}
+function closeFirebaseSetup() {
+  document.getElementById('firebase-modal').style.display = 'none';
+}
+async function saveFirebaseConfig() {
+  const apiKey    = document.getElementById('fb-apikey').value.trim();
+  const projectId = document.getElementById('fb-projectid').value.trim();
+  const dbUrl     = document.getElementById('fb-dburl').value.trim();
+  if (!apiKey || !projectId || !dbUrl) { alert('Please fill in all three fields.'); return; }
+
+  const btn = document.getElementById('fb-save-btn');
+  btn.textContent = 'Connecting...'; btn.disabled = true;
+  document.getElementById('fb-error').style.display = 'none';
+
+  const config = { apiKey, projectId, databaseURL: dbUrl, authDomain: `${projectId}.firebaseapp.com` };
+  try {
+    // Test connection by trying to init
+    const m = window._fbModules;
+    if (!m) throw new Error('Firebase modules not loaded yet. Try again in a moment.');
+    // Check if already initialized
+    let app;
+    try { app = m.initializeApp(config, 'test-'+Date.now()); }
+    catch(e) { app = m.initializeApp(config); }
+    const testDb  = m.getDatabase(app);
+    const testRef = m.ref(testDb, 'paysync_test');
+    await m.set(testRef, { ok: true });
+    // Success — save config and reinit
+    localStorage.setItem('paysync_fb_config', JSON.stringify(config));
+    // Push local data to Firebase
+    fbApp = app; fbDb = testDb;
+    fbRef = m.ref; fbGet = m.get; fbSet = m.set; fbOnValue = m.onValue; fbRemove = m.remove;
+    usingFirebase = true;
+    await fbSet(fbRef(fbDb, 'paysync'), db);
+    document.getElementById('fb-success').style.display = 'flex';
+    document.getElementById('firebase-setup-banner').style.display = 'none';
+    setTimeout(() => { closeFirebaseSetup(); loadAdminDashboard(); }, 2000);
+  } catch(e) {
+    document.getElementById('fb-error').style.display = 'flex';
+    document.getElementById('fb-error-text').textContent = 'Error: ' + e.message;
+    btn.textContent = 'Test and Save Connection'; btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  CLIENT HOME
 // ══════════════════════════════════════════════════════════════════════════
 function loadClientHome() {
-  const client = db.clients.find(c => c.id === currentClientId);
+  const clients = db.clients ? Object.values(db.clients) : [];
+  const client = clients.find(c => c.id === currentClientId);
   if (!client) return;
-  document.getElementById('client-badge').textContent = client.name;
-  document.getElementById('client-badge-2').textContent = client.name;
-  document.getElementById('client-badge-3').textContent = client.name;
-  document.getElementById('client-badge-4').textContent = client.name;
-  document.getElementById('client-badge-5').textContent = client.name;
+  ['client-badge','client-badge-2','client-badge-3','client-badge-4','client-badge-5'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = client.name;
+  });
   document.getElementById('client-welcome').textContent = 'Welcome, ' + client.name;
-  document.getElementById('client-welcome-sub').textContent = 'What would you like to do today? Payroll frequency: ' + client.freq + '.';
+  document.getElementById('client-welcome-sub').textContent = 'What would you like to do today? Pay frequency: ' + client.freq + '.';
   document.getElementById('today-date').textContent = new Date().toLocaleDateString('en-CA', {weekday:'short',year:'numeric',month:'short',day:'numeric'});
+
+  // Check for missing banking info
+  const emps = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
+  const missingBanking = emps.filter(e => !e.banking);
+  if (missingBanking.length) {
+    const alertEl = document.getElementById('pending-alert');
+    alertEl.style.display = 'flex';
+    alertEl.querySelector('div').innerHTML = '<strong>' + missingBanking.length + ' employee(s) missing banking info:</strong> ' + missingBanking.map(e=>e.first+' '+e.last).join(', ') + '. Please add or update their profiles.';
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  PAYROLL RUN
 // ══════════════════════════════════════════════════════════════════════════
 function loadPayrollRun() {
-  const emps = db.employees.filter(e => e.clientId === currentClientId);
+  const emps = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
   const tbody = document.getElementById('hours-tbody');
   tbody.innerHTML = '';
-
   if (!emps.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees found. Please add employees first.</td></tr>';
     return;
   }
-
   emps.forEach(e => {
     const row = document.createElement('tr');
     row.innerHTML = `
       <td><div class="emp-name-cell">${e.first} ${e.last}</div><div class="text-small text-muted">${e.title}</div></td>
       <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
       <td><input type="number" id="hrs-reg-${e.id}" min="0" max="120" step="0.5" placeholder="0" oninput="checkHours('${e.id}')"></td>
-      <td><input type="number" id="hrs-ot-${e.id}" min="0" max="80" step="0.5" placeholder="0"></td>
+      <td><input type="number" id="hrs-ot-${e.id}"  min="0" max="80"  step="0.5" placeholder="0"></td>
       <td><input type="number" id="hrs-vac-${e.id}" min="0" step="0.01" placeholder="0.00"></td>
       <td style="text-align:center"><input type="checkbox" id="hrs-stat-${e.id}"></td>
       <td><input type="number" id="hrs-other-${e.id}" min="0" step="0.01" placeholder="0.00"></td>
@@ -1371,60 +1535,71 @@ function loadPayrollRun() {
 }
 
 function checkHours(empId) {
-  const reg = parseFloat(document.getElementById(`hrs-reg-${empId}`)?.value) || 0;
-  const input = document.getElementById(`hrs-reg-${empId}`);
+  const reg = parseFloat(document.getElementById('hrs-reg-'+empId)?.value) || 0;
+  const input = document.getElementById('hrs-reg-'+empId);
+  if (reg > 44) input.classList.add('warn'); else input.classList.remove('warn');
+  const emps = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
   const warnings = [];
-  if (reg > 44) {
-    input.classList.add('warn');
-    warnings.push(`Hours > 44 for an employee — verify overtime eligibility (AB threshold).`);
-  } else {
-    input.classList.remove('warn');
-  }
+  emps.forEach(e => {
+    const r = parseFloat(document.getElementById('hrs-reg-'+e.id)?.value)||0;
+    if (r > 44) warnings.push(e.first+' '+e.last+': '+r+' regular hours (AB OT threshold is 44)');
+  });
   const warnDiv = document.getElementById('hours-warnings');
   const warnText = document.getElementById('hours-warnings-text');
-  if (warnings.length) {
-    warnDiv.style.display = 'flex';
-    warnText.innerHTML = warnings.join('<br>');
-  } else {
-    warnDiv.style.display = 'none';
-  }
+  if (warnings.length) { warnDiv.style.display='flex'; warnText.innerHTML='<strong>Overtime flags:</strong><br>'+warnings.join('<br>'); }
+  else warnDiv.style.display='none';
 }
 
-function submitPayrollRun() {
-  const start = document.getElementById('pp-start').value;
-  const end   = document.getElementById('pp-end').value;
-  const pay   = document.getElementById('pp-paydate').value;
-
+async function submitPayrollRun() {
+  const start   = document.getElementById('pp-start').value;
+  const end     = document.getElementById('pp-end').value;
+  const paydate = document.getElementById('pp-paydate').value;
   let valid = true;
-  if (!start) { showErr('err-pp-start', 'pp-start'); valid=false; }
-  if (!end)   { showErr('err-pp-end',   'pp-end');   valid=false; }
-  if (!pay)   { showErr('err-pp-paydate','pp-paydate'); valid=false; }
+  if (!start)   { showErr('err-pp-start','pp-start');     valid=false; }
+  if (!end)     { showErr('err-pp-end','pp-end');         valid=false; }
+  if (!paydate) { showErr('err-pp-paydate','pp-paydate'); valid=false; }
   if (!valid) return;
 
-  const emps = db.employees.filter(e => e.clientId === currentClientId);
+  const emps  = db.employees ? Object.values(db.employees).filter(e => e.clientId === currentClientId) : [];
   let flags = 0;
+  const hoursData = {};
   emps.forEach(e => {
-    const reg = parseFloat(document.getElementById(`hrs-reg-${e.id}`)?.value) || 0;
+    const reg   = parseFloat(document.getElementById('hrs-reg-'+e.id)?.value)   || 0;
+    const ot    = parseFloat(document.getElementById('hrs-ot-'+e.id)?.value)    || 0;
+    const vac   = parseFloat(document.getElementById('hrs-vac-'+e.id)?.value)   || 0;
+    const stat  = document.getElementById('hrs-stat-'+e.id)?.checked || false;
+    const other = parseFloat(document.getElementById('hrs-other-'+e.id)?.value) || 0;
     if (reg > 44) flags++;
+    hoursData[e.id] = {
+      empName:  e.first+' '+e.last,
+      title:    e.title,
+      type:     e.type,
+      payType:  e.payType,
+      rate:     e.rate,
+      reg, ot, vac, stat, other,
+      grossPay: e.payType === 'hourly' ? ((reg * e.rate) + (ot * e.rate * 1.5) + other + vac).toFixed(2)
+                                       : ((e.rate / (e.freq==='weekly'?52:e.freq==='biweekly'?26:e.freq==='semimonthly'?24:12)) + other + vac).toFixed(2)
+    };
   });
 
-  const fmt = d => { if(!d) return ''; const [y,m,dy]=d.split('-'); return `${m}/${dy}/${y}`; };
-  const sub = {
-    id: 's'+Date.now(),
-    type: 'payroll',
-    clientId: currentClientId,
-    period: `${fmt(start)} – ${fmt(end)}`,
+  const fmt = d => { if(!d) return ''; const [y,m,dy]=d.split('-'); return m+'/'+dy+'/'+y; };
+  const id  = 's'+Date.now();
+  if (!db.submissions) db.submissions = {};
+  db.submissions[id] = {
+    id, type:'payroll', clientId:currentClientId,
+    period: fmt(start)+' - '+fmt(end),
+    payDate: fmt(paydate),
+    ppStart: start, ppEnd: end,
+    notes: document.getElementById('pp-notes').value,
     submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
-    empCount: emps.length,
-    flags,
-    status: 'new',
-    note: flags ? `${flags} OT flag(s) — verify` : ''
+    empCount: emps.length, flags, status:'new',
+    note: flags ? flags+' OT flag(s)' : '',
+    hours: hoursData
   };
-  db.submissions.push(sub);
-  saveData(db);
+  await saveData(db);
 
   document.getElementById('success-title').textContent = 'Payroll Run Submitted!';
-  document.getElementById('success-msg').textContent = `Pay period ${fmt(start)} – ${fmt(end)} received. Your accountant will review and process within 1–2 business days.`;
+  document.getElementById('success-msg').textContent = 'Pay period '+fmt(start)+' - '+fmt(end)+' received. Your accountant will review and process within 1-2 business days.';
   showPage('pg-success');
 }
 
@@ -1433,14 +1608,10 @@ function submitPayrollRun() {
 // ══════════════════════════════════════════════════════════════════════════
 function showEmpStep(n) {
   for (let i=1;i<=4;i++) {
-    const el = document.getElementById(`emp-step-${i}`);
+    const el = document.getElementById('emp-step-'+i);
     if (el) el.style.display = i===n ? 'block' : 'none';
-    const ind = document.getElementById(`step${i}-ind`);
-    if (ind) {
-      ind.classList.remove('active','done');
-      if (i < n) ind.classList.add('done');
-      if (i === n) ind.classList.add('active');
-    }
+    const ind = document.getElementById('step'+i+'-ind');
+    if (ind) { ind.classList.remove('active','done'); if(i<n) ind.classList.add('done'); if(i===n) ind.classList.add('active'); }
   }
   currentEmpStep = n;
   if (n===4) buildReview();
@@ -1448,48 +1619,32 @@ function showEmpStep(n) {
 }
 
 function showErr(errId, inputId) {
-  const e = document.getElementById(errId);
-  const i = document.getElementById(inputId);
-  if (e) e.classList.add('show');
-  if (i) i.classList.add('error');
+  const e=document.getElementById(errId), i=document.getElementById(inputId);
+  if(e) e.classList.add('show'); if(i) i.classList.add('error');
 }
 function clearErr(errId, inputId) {
-  const e = document.getElementById(errId);
-  const i = document.getElementById(inputId);
-  if (e) e.classList.remove('show');
-  if (i) i.classList.remove('error');
+  const e=document.getElementById(errId), i=document.getElementById(inputId);
+  if(e) e.classList.remove('show'); if(i) i.classList.remove('error');
 }
 
 function validateStep1() {
   let ok = true;
-  const req = [
-    ['emp-first','err-emp-first'],['emp-last','err-emp-last'],
-    ['emp-dob','err-emp-dob'],['emp-email','err-emp-email'],
-    ['emp-phone','err-emp-phone'],['emp-address','err-emp-address'],
-    ['emp-city','err-emp-city'],['emp-province','err-emp-province'],
-    ['emp-postal','err-emp-postal']
-  ];
-  req.forEach(([id,err]) => {
+  [['emp-first','err-emp-first'],['emp-last','err-emp-last'],['emp-dob','err-emp-dob'],
+   ['emp-email','err-emp-email'],['emp-phone','err-emp-phone'],['emp-address','err-emp-address'],
+   ['emp-city','err-emp-city'],['emp-province','err-emp-province'],['emp-postal','err-emp-postal']
+  ].forEach(([id,err]) => {
     const v = document.getElementById(id)?.value?.trim();
-    if (!v) { showErr(err,id); ok=false; } else { clearErr(err,id); }
+    if (!v) { showErr(err,id); ok=false; } else clearErr(err,id);
   });
-  // SIN validation
   const sin = document.getElementById('emp-sin').value.replace(/-/g,'');
-  if (sin.length !== 9 || !/^\d{9}$/.test(sin)) { showErr('err-emp-sin','emp-sin'); ok=false; }
-  else clearErr('err-emp-sin','emp-sin');
-
+  if (sin.length!==9||!/^\d{9}$/.test(sin)) { showErr('err-emp-sin','emp-sin'); ok=false; } else clearErr('err-emp-sin','emp-sin');
   if (ok) {
     empFormData.personal = {
-      first: document.getElementById('emp-first').value,
-      last:  document.getElementById('emp-last').value,
-      dob:   document.getElementById('emp-dob').value,
-      sin:   document.getElementById('emp-sin').value,
-      email: document.getElementById('emp-email').value,
-      phone: document.getElementById('emp-phone').value,
-      address: document.getElementById('emp-address').value,
-      city: document.getElementById('emp-city').value,
-      province: document.getElementById('emp-province').value,
-      postal: document.getElementById('emp-postal').value,
+      first: document.getElementById('emp-first').value,    last:    document.getElementById('emp-last').value,
+      dob:   document.getElementById('emp-dob').value,       sin:     document.getElementById('emp-sin').value,
+      email: document.getElementById('emp-email').value,    phone:   document.getElementById('emp-phone').value,
+      address: document.getElementById('emp-address').value, city:   document.getElementById('emp-city').value,
+      province: document.getElementById('emp-province').value, postal: document.getElementById('emp-postal').value,
     };
     showEmpStep(2);
   }
@@ -1497,46 +1652,39 @@ function validateStep1() {
 
 function validateStep2() {
   let ok = true;
-  const inst    = document.getElementById('emp-bank-inst').value;
-  const transit = document.getElementById('emp-bank-transit').value;
-  const acct    = document.getElementById('emp-bank-acct').value;
-  const type    = document.getElementById('emp-bank-type').value;
-
-  if (inst.length !== 3)    { showErr('err-emp-bank-inst',   'emp-bank-inst');    ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
-  if (transit.length !== 5) { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
-  if (acct.length < 7 || acct.length > 12) { showErr('err-emp-bank-acct','emp-bank-acct'); ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
+  const inst=document.getElementById('emp-bank-inst').value, transit=document.getElementById('emp-bank-transit').value;
+  const acct=document.getElementById('emp-bank-acct').value, type=document.getElementById('emp-bank-type').value;
+  if (inst.length!==3)       { showErr('err-emp-bank-inst','emp-bank-inst');       ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
+  if (transit.length!==5)    { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
+  if (acct.length<7||acct.length>12) { showErr('err-emp-bank-acct','emp-bank-acct'); ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
   if (!type) { showErr('err-emp-bank-type','emp-bank-type'); ok=false; } else clearErr('err-emp-bank-type','emp-bank-type');
-
   if (ok) {
-    empFormData.banking = { inst, transit, acct: '****'+acct.slice(-3), type };
+    empFormData.banking = { inst, transit, acctFull: acct, acct:'****'+acct.slice(-3), type };
     showEmpStep(3);
   }
 }
 
 function validateStep3() {
   let ok = true;
-  const req = [
-    ['emp-start-date','err-emp-start'],['emp-title','err-emp-title'],
-    ['emp-type','err-emp-type'],['emp-pay-type','err-emp-pay-type'],
-    ['emp-freq','err-emp-freq']
-  ];
-  req.forEach(([id,err]) => {
+  [['emp-start-date','err-emp-start'],['emp-title','err-emp-title'],
+   ['emp-type','err-emp-type'],['emp-pay-type','err-emp-pay-type'],['emp-freq','err-emp-freq']
+  ].forEach(([id,err]) => {
     const v = document.getElementById(id)?.value?.trim();
-    if (!v) { showErr(err,id); ok=false; } else { clearErr(err,id); }
+    if (!v) { showErr(err,id); ok=false; } else clearErr(err,id);
   });
   const rate = parseFloat(document.getElementById('emp-rate').value);
-  if (!rate || rate <= 0) { showErr('err-emp-rate','emp-rate'); ok=false; } else clearErr('err-emp-rate','emp-rate');
-
+  if (!rate||rate<=0) { showErr('err-emp-rate','emp-rate'); ok=false; } else clearErr('err-emp-rate','emp-rate');
   if (ok) {
     empFormData.payroll = {
       startDate: document.getElementById('emp-start-date').value,
       title:     document.getElementById('emp-title').value,
       type:      document.getElementById('emp-type').value,
       payType:   document.getElementById('emp-pay-type').value,
-      rate:      rate,
+      rate,
       freq:      document.getElementById('emp-freq').value,
-      td1Fed:    document.getElementById('emp-td1-fed').value || '15705',
+      td1Fed:    document.getElementById('emp-td1-fed').value  || '15705',
       td1Prov:   document.getElementById('emp-td1-prov').value || '21003',
+      extraTax:  document.getElementById('emp-extra-tax').value || '0',
       notes:     document.getElementById('emp-notes').value,
     };
     showEmpStep(4);
@@ -1544,71 +1692,67 @@ function validateStep3() {
 }
 
 function buildReview() {
-  const p = empFormData.personal || {};
-  const b = empFormData.banking  || {};
-  const r = empFormData.payroll  || {};
+  const p=empFormData.personal||{}, b=empFormData.banking||{}, r=empFormData.payroll||{};
   const items = [
-    { label: 'Full Name',        value: `${p.first} ${p.last}`,                  ok: !!(p.first && p.last) },
-    { label: 'SIN',              value: p.sin ? '***-***-' + p.sin.replace(/-/g,'').slice(-3) : '', ok: !!p.sin },
-    { label: 'Email',            value: p.email,  ok: !!p.email },
-    { label: 'Home Address',     value: `${p.address}, ${p.city} ${p.province} ${p.postal}`, ok: true },
-    { label: 'Banking (masked)', value: `Institution ${b.inst} · Transit ${b.transit} · Acct ${b.acct} (${b.type})`, ok: !!(b.inst && b.transit) },
-    { label: 'Start Date',       value: r.startDate,  ok: !!r.startDate },
-    { label: 'Job Title',        value: r.title,      ok: !!r.title },
-    { label: 'Pay',              value: `${r.payType} — $${r.rate} · ${r.freq}`, ok: true },
-    { label: 'TD1 Federal',      value: `$${r.td1Fed}`, ok: true },
-    { label: 'TD1 Provincial',   value: `$${r.td1Prov}`, ok: true },
+    { label:'Full Name',        value:p.first+' '+p.last,      ok:!!(p.first&&p.last) },
+    { label:'Date of Birth',    value:p.dob,                   ok:!!p.dob },
+    { label:'SIN',              value:p.sin?'***-***-'+p.sin.replace(/-/g,'').slice(-3):'', ok:!!p.sin },
+    { label:'Email',            value:p.email,                 ok:!!p.email },
+    { label:'Phone',            value:p.phone,                 ok:!!p.phone },
+    { label:'Address',          value:p.address+', '+p.city+' '+p.province+' '+p.postal, ok:true },
+    { label:'Banking (masked)', value:'Inst '+b.inst+' | Transit '+b.transit+' | Acct '+b.acct+' ('+b.type+')', ok:!!(b.inst&&b.transit) },
+    { label:'Start Date',       value:r.startDate,             ok:!!r.startDate },
+    { label:'Job Title',        value:r.title,                 ok:!!r.title },
+    { label:'Employment Type',  value:r.type+' | '+r.payType,  ok:true },
+    { label:'Pay Rate',         value:'$'+r.rate+(r.payType==='hourly'?'/hr':'/yr')+' | '+r.freq, ok:true },
+    { label:'TD1 Federal',      value:'$'+r.td1Fed,            ok:true },
+    { label:'TD1 Provincial',   value:'$'+r.td1Prov,           ok:true },
   ];
-  document.getElementById('review-checklist').innerHTML = `
-    <ul class="checklist">
-      ${items.map(i => `
-        <li class="${i.ok && i.value ? 'complete' : 'missing'}">
-          <span class="check-icon">${i.ok && i.value ? '✓' : '⚠'}</span>
-          <div><strong>${i.label}:</strong> ${i.value || '— Missing'}</div>
-        </li>`).join('')}
-    </ul>`;
+  document.getElementById('review-checklist').innerHTML =
+    '<ul class="checklist">'+items.map(i=>`<li class="${i.ok&&i.value?'complete':'missing'}"><span class="check-icon">${i.ok&&i.value?'ok':'!'}</span><div><strong>${i.label}:</strong> ${i.value||'Missing'}</div></li>`).join('')+'</ul>';
 }
 
-function submitNewEmployee() {
-  if (!document.getElementById('emp-confirm').checked) {
-    showErr('err-emp-confirm','emp-confirm');
-    return;
-  }
-  const r = empFormData.payroll || {};
-  const p = empFormData.personal || {};
-  const newEmp = {
-    id: 'e' + Date.now(),
-    clientId: currentClientId,
-    first:    p.first,
-    last:     p.last,
-    title:    r.title,
-    type:     r.type,
-    payType:  r.payType,
-    rate:     r.rate,
-    banking:  true,
-    td1:      true,
-    status:   'active',
-    startDate: r.startDate,
+async function submitNewEmployee() {
+  if (!document.getElementById('emp-confirm').checked) { showErr('err-emp-confirm','emp-confirm'); return; }
+  const p=empFormData.personal||{}, b=empFormData.banking||{}, r=empFormData.payroll||{};
+  const id = 'e'+Date.now();
+  if (!db.employees) db.employees = {};
+  db.employees[id] = {
+    id, clientId: currentClientId,
+    // Personal
+    first:p.first, last:p.last, dob:p.dob, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
+    email:p.email, phone:p.phone, address:p.address, city:p.city, province:p.province, postal:p.postal,
+    // Banking
+    bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankType:b.type,
+    // Payroll
+    title:r.title, type:r.type, payType:r.payType, rate:r.rate, freq:r.freq,
+    td1Fed:r.td1Fed, td1Prov:r.td1Prov, extraTax:r.extraTax, notes:r.notes,
+    startDate:r.startDate,
+    banking:true, td1:true, status:'active'
   };
-  db.employees.push(newEmp);
 
-  const sub = {
-    id: 'sub' + Date.now(),
-    type: 'employee',
-    clientId: currentClientId,
-    empName: `${p.first} ${p.last}`,
-    startDate: r.startDate,
-    banking: '✓ Provided',
-    td1: '✓ Provided',
-    submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
-    status: 'new',
-    note: r.notes || '',
+  const subId = 'sub'+Date.now();
+  if (!db.submissions) db.submissions = {};
+  db.submissions[subId] = {
+    id:subId, type:'employee', clientId:currentClientId,
+    empName:p.first+' '+p.last,
+    startDate:r.startDate,
+    banking:'Provided',
+    td1:'Provided',
+    submitted:new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
+    status:'new', note:r.notes||'',
+    empDetails: {
+      first:p.first, last:p.last, dob:p.dob, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
+      email:p.email, phone:p.phone, address:p.address+', '+p.city+', '+p.province+' '+p.postal,
+      bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankType:b.type,
+      title:r.title, type:r.type, payType:r.payType, rate:r.rate, freq:r.freq,
+      td1Fed:r.td1Fed, td1Prov:r.td1Prov, extraTax:r.extraTax
+    }
   };
-  db.submissions.push(sub);
-  saveData(db);
+  await saveData(db);
 
-  document.getElementById('success-title').textContent = `${p.first} ${p.last} Added!`;
-  document.getElementById('success-msg').textContent = `New employee profile submitted successfully. Your accountant will set up payroll and confirm within 1 business day.`;
+  document.getElementById('success-title').textContent = p.first+' '+p.last+' Added!';
+  document.getElementById('success-msg').textContent = 'New employee profile submitted. Your accountant will set up payroll and confirm within 1 business day.';
   showPage('pg-success');
 }
 
@@ -1616,21 +1760,18 @@ function submitNewEmployee() {
 //  ROSTER
 // ══════════════════════════════════════════════════════════════════════════
 function loadRoster() {
-  const emps = db.employees.filter(e => e.clientId === currentClientId);
+  const emps  = db.employees ? Object.values(db.employees).filter(e=>e.clientId===currentClientId) : [];
   const tbody = document.getElementById('roster-tbody');
   tbody.innerHTML = '';
-  if (!emps.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees yet. Add your first employee above.</td></tr>';
-    return;
-  }
+  if (!emps.length) { tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ink-muted)">No employees yet.</td></tr>'; return; }
   emps.forEach(e => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${e.first} ${e.last}</strong></td>
+      <td><strong>${e.first} ${e.last}</strong><div class="text-small text-muted">${e.email||''}</div></td>
       <td>${e.title}</td>
       <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
-      <td>${e.payType==='hourly' ? '$'+e.rate+'/hr' : '$'+Number(e.rate).toLocaleString()+'/yr'}</td>
-      <td><span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'✓ On file':'⚠ Missing'}</span></td>
+      <td>${e.payType==='hourly'?'$'+e.rate+'/hr':'$'+Number(e.rate).toLocaleString()+'/yr'}</td>
+      <td><span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'On file':'Missing'}</span></td>
       <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>
     `;
     tbody.appendChild(tr);
@@ -1641,22 +1782,19 @@ function loadRoster() {
 //  HISTORY
 // ══════════════════════════════════════════════════════════════════════════
 function loadHistory() {
-  const subs = db.submissions.filter(s => s.clientId === currentClientId);
+  const subs  = db.submissions ? Object.values(db.submissions).filter(s=>s.clientId===currentClientId) : [];
   const tbody = document.getElementById('history-tbody');
   tbody.innerHTML = '';
-  if (!subs.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--ink-muted)">No submissions yet.</td></tr>';
-    return;
-  }
+  if (!subs.length) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--ink-muted)">No submissions yet.</td></tr>'; return; }
   [...subs].reverse().forEach(s => {
     const tr = document.createElement('tr');
-    const type = s.type === 'payroll' ? '📋 Payroll Run' : '👤 New Employee';
-    const period = s.type === 'payroll' ? s.period : (s.empName + ' · starts ' + s.startDate);
-    const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
-    const statusLbl = s.status==='done'?'Processed':s.status==='review'?'Under Review':'Received';
+    const type   = s.type==='payroll' ? 'Payroll Run' : 'New Employee';
+    const period = s.type==='payroll' ? s.period : s.empName+' starts '+s.startDate;
+    const stCls  = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
+    const stLbl  = s.status==='done'?'Processed':s.status==='review'?'Under Review':'Received';
     tr.innerHTML = `<td>${type}</td><td>${period}</td><td>${s.submitted}</td>
-      <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
-      <td style="color:var(--ink-muted);font-size:13px">${s.note||'—'}</td>`;
+      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${stLbl}</span></td>
+      <td style="color:var(--ink-muted);font-size:13px">${s.note||''}</td>`;
     tbody.appendChild(tr);
   });
 }
@@ -1667,21 +1805,27 @@ function loadHistory() {
 function loadAdminDashboard() {
   document.getElementById('admin-date').textContent = new Date().toLocaleDateString('en-CA',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 
-  const payrolls = db.submissions.filter(s => s.type==='payroll');
-  const newEmps  = db.submissions.filter(s => s.type==='employee');
-  const pending  = db.submissions.filter(s => s.status!=='done');
-  const flags    = db.submissions.filter(s => s.flags > 0);
+  // Show Firebase banner if not configured
+  document.getElementById('firebase-setup-banner').style.display = usingFirebase ? 'none' : 'flex';
+
+  const allSubs     = db.submissions ? Object.values(db.submissions) : [];
+  const payrolls    = allSubs.filter(s=>s.type==='payroll');
+  const newEmps     = allSubs.filter(s=>s.type==='employee');
+  const pending     = allSubs.filter(s=>s.status!=='done');
+  const flagged     = allSubs.filter(s=>s.flags>0);
+  const clients     = db.clients    ? Object.values(db.clients)    : [];
+  const syncStatus  = usingFirebase ? '<span style="color:var(--teal)">Cloud Sync ON</span>' : '<span style="color:var(--gold-dk)">Local Only</span>';
 
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card accent-navy">
       <div class="stat-label">Total Clients</div>
-      <div class="stat-value">${db.clients.length}</div>
-      <div class="stat-sub">Active companies</div>
+      <div class="stat-value">${clients.length}</div>
+      <div class="stat-sub">${syncStatus}</div>
     </div>
     <div class="stat-card accent-gold">
       <div class="stat-label">Pending Review</div>
       <div class="stat-value">${pending.length}</div>
-      <div class="stat-sub">Submissions awaiting action</div>
+      <div class="stat-sub">Awaiting your action</div>
     </div>
     <div class="stat-card accent-teal">
       <div class="stat-label">New Employees</div>
@@ -1690,8 +1834,8 @@ function loadAdminDashboard() {
     </div>
     <div class="stat-card accent-red">
       <div class="stat-label">OT Flags</div>
-      <div class="stat-value">${flags.length}</div>
-      <div class="stat-sub">Overtime alerts to verify</div>
+      <div class="stat-value">${flagged.length}</div>
+      <div class="stat-sub">Overtime alerts</div>
     </div>
   `;
 
@@ -1699,22 +1843,20 @@ function loadAdminDashboard() {
   const ptbody = document.getElementById('admin-payroll-tbody');
   ptbody.innerHTML = '';
   payrolls.forEach(s => {
-    const client = db.clients.find(c=>c.id===s.clientId);
-    const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
-    const statusLbl = s.status==='done'?'Processed':s.status==='review'?'Flagged':'New';
+    const client = clients.find(c=>c.id===s.clientId);
+    const stCls  = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
+    const stLbl  = s.status==='done'?'Processed':s.status==='review'?'Flagged':'New';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${client?.name||'—'}</strong></td>
-      <td>${s.period}</td>
-      <td>${s.submitted}</td>
-      <td>${s.empCount}</td>
-      <td>${s.flags>0?`<span class="status-badge status-review">⚠ ${s.flags} flag(s)</span>`:'<span style="color:var(--teal)">✓ Clean</span>'}</td>
-      <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
-      <td>
+      <td><strong>${client?.name||''}</strong></td>
+      <td>${s.period}${s.payDate?' (pay '+s.payDate+')':''}</td>
+      <td>${s.submitted}</td><td>${s.empCount}</td>
+      <td>${s.flags>0?'<span class="status-badge status-review">'+s.flags+' flag(s)</span>':'<span style="color:var(--teal)">Clean</span>'}</td>
+      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${stLbl}</span></td>
+      <td style="white-space:nowrap">
         <button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Done</button>
-        <button class="btn btn-sm btn-outline" style="margin-left:6px" onclick="exportOne('${s.id}')">Export</button>
-      </td>
-    `;
+        <button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="exportPayroll('${s.id}')">Export</button>
+      </td>`;
     ptbody.appendChild(tr);
   });
 
@@ -1722,81 +1864,143 @@ function loadAdminDashboard() {
   const etbody = document.getElementById('admin-emp-tbody');
   etbody.innerHTML = '';
   newEmps.forEach(s => {
-    const client = db.clients.find(c=>c.id===s.clientId);
-    const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
-    const statusLbl = s.status==='done'?'Set Up':'New';
+    const client = clients.find(c=>c.id===s.clientId);
+    const stCls  = s.status==='done'?'status-done':'status-new';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${client?.name||'—'}</strong></td>
-      <td>${s.empName}</td>
-      <td>${s.startDate||'—'}</td>
-      <td><span class="status-badge ${s.banking?.includes('✓')?'status-done':'status-review'}">${s.banking||'—'}</span></td>
-      <td><span class="status-badge ${s.td1?.includes('✓')?'status-done':'status-review'}">${s.td1||'—'}</span></td>
+      <td><strong>${client?.name||''}</strong></td>
+      <td>${s.empName}</td><td>${s.startDate||''}</td>
+      <td><span class="status-badge ${s.banking==='Provided'?'status-done':'status-review'}">${s.banking||''}</span></td>
+      <td><span class="status-badge ${s.td1==='Provided'?'status-done':'status-review'}">${s.td1||''}</span></td>
       <td>${s.submitted}</td>
-      <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
-      <td><button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Set Up</button></td>
-    `;
+      <td><span class="status-badge ${stCls}"><span class="status-dot"></span>${s.status==='done'?'Set Up':'New'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Set Up</button>
+        <button class="btn btn-sm btn-outline" style="margin-left:4px" onclick="exportEmployee('${s.id}')">Export</button>
+      </td>`;
     etbody.appendChild(tr);
   });
 
   // Clients tab
   const ctbody = document.getElementById('admin-clients-tbody');
   ctbody.innerHTML = '';
-  db.clients.forEach(c => {
-    const empCount = db.employees.filter(e=>e.clientId===c.id).length;
-    const lastSub  = [...db.submissions].filter(s=>s.clientId===c.id).pop();
+  clients.forEach(c => {
+    const empCount = db.employees ? Object.values(db.employees).filter(e=>e.clientId===c.id).length : 0;
+    const lastSub  = [...(db.submissions?Object.values(db.submissions):[])]
+                     .filter(s=>s.clientId===c.id).pop();
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${c.name}</strong></td>
+    tr.innerHTML = `<td><strong>${c.name}</strong></td>
       <td><code style="background:var(--surface-3);padding:2px 8px;border-radius:4px;font-size:12px">${c.code}</code></td>
-      <td>${empCount}</td>
-      <td>${lastSub?.submitted||'No submissions yet'}</td>
-      <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>
-    `;
+      <td>${empCount}</td><td>${lastSub?.submitted||'No submissions yet'}</td>
+      <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>`;
     ctbody.appendChild(tr);
   });
 }
 
 function switchTab(id) {
-  document.querySelectorAll('.tab-content').forEach(t => t.style.display='none');
+  document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
   document.getElementById(id).style.display='block';
-  document.querySelectorAll('.admin-tab').forEach((b,i) => {
-    const ids = ['tab-payroll','tab-employees','tab-clients'];
-    b.classList.toggle('active', ids[i]===id);
+  document.querySelectorAll('.admin-tab').forEach((b,i)=>{
+    b.classList.toggle('active',['tab-payroll','tab-employees','tab-clients'][i]===id);
   });
 }
 
-function markDone(subId) {
-  const s = db.submissions.find(x=>x.id===subId);
-  if (s) { s.status='done'; s.note='Processed ✓'; saveData(db); loadAdminDashboard(); }
+async function markDone(subId) {
+  const subs = db.submissions||{};
+  if (subs[subId]) { subs[subId].status='done'; subs[subId].note='Processed'; }
+  else {
+    // try to find by searching
+    Object.values(subs).forEach(s=>{ if(s.id===subId){s.status='done';s.note='Processed';} });
+  }
+  await saveData(db);
+  loadAdminDashboard();
 }
 
-function exportOne(subId) {
-  const s = db.submissions.find(x=>x.id===subId);
+// ══════════════════════════════════════════════════════════════════════════
+//  EXPORTS — COMPREHENSIVE
+// ══════════════════════════════════════════════════════════════════════════
+function exportPayroll(subId) {
+  const subs = db.submissions ? Object.values(db.submissions) : [];
+  const s = subs.find(x=>x.id===subId);
+  if (!s||!s.hours) { alert('No hours data found for this submission.'); return; }
+  const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
+
+  let csv = 'CLIENT,PAY PERIOD,PAY DATE,EMPLOYEE,TITLE,EMP TYPE,PAY TYPE,RATE,REG HOURS,OT HOURS,VACATION PAY ($),STAT HOLIDAY,OTHER/BONUS ($),GROSS PAY ($)\n';
+  Object.values(s.hours).forEach(h => {
+    csv += `"${client?.name||''}","${s.period}","${s.payDate||''}","${h.empName}","${h.title}","${h.type}","${h.payType}","${h.rate}","${h.reg}","${h.ot}","${h.vac}","${h.stat?'Yes':'No'}","${h.other}","${h.grossPay}"\n`;
+  });
+  if (s.notes) csv += `\n"Notes:","${s.notes}"\n`;
+  downloadCSV(csv, 'payroll-'+( client?.code||'client')+'-'+s.ppStart+'.csv');
+}
+
+function exportEmployee(subId) {
+  const subs = db.submissions ? Object.values(db.submissions) : [];
+  const s = subs.find(x=>x.id===subId);
   if (!s) return;
-  const client = db.clients.find(c=>c.id===s.clientId);
-  const emps = db.employees.filter(e=>e.clientId===s.clientId);
-  let csv = 'Client,Period,Employee,Type,Pay Type,Rate\n';
+  const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
+  const d = s.empDetails || {};
+
+  let csv = 'FIELD,VALUE\n';
+  csv += `"Client","${client?.name||''}"\n`;
+  csv += `"Submitted","${s.submitted}"\n`;
+  csv += `"Full Name","${d.first||''} ${d.last||''}"\n`;
+  csv += `"Date of Birth","${d.dob||''}"\n`;
+  csv += `"SIN (masked)","${d.sinMasked||''}"\n`;
+  csv += `"Email","${d.email||''}"\n`;
+  csv += `"Phone","${d.phone||''}"\n`;
+  csv += `"Address","${d.address||''}"\n`;
+  csv += `"Bank Institution #","${d.bankInst||''}"\n`;
+  csv += `"Bank Transit #","${d.bankTransit||''}"\n`;
+  csv += `"Bank Account # (masked)","${d.bankAcct||''}"\n`;
+  csv += `"Account Type","${d.bankType||''}"\n`;
+  csv += `"Job Title","${d.title||''}"\n`;
+  csv += `"Employment Type","${d.type||''}"\n`;
+  csv += `"Pay Type","${d.payType||''}"\n`;
+  csv += `"Rate","${d.rate||''}"\n`;
+  csv += `"Pay Frequency","${d.freq||''}"\n`;
+  csv += `"TD1 Federal","${d.td1Fed||''}"\n`;
+  csv += `"TD1 Provincial","${d.td1Prov||''}"\n`;
+  csv += `"Extra Tax/Period","${d.extraTax||'0'}"\n`;
+  csv += `"Start Date","${s.startDate||''}"\n`;
+  downloadCSV(csv, 'new-employee-'+s.empName.replace(/\s+/g,'-')+'-'+Date.now()+'.csv');
+}
+
+function exportAllEmployees() {
+  const emps = db.employees ? Object.values(db.employees) : [];
+  const clients = db.clients ? Object.values(db.clients) : [];
+  let csv = 'CLIENT,FIRST,LAST,TITLE,TYPE,PAY TYPE,RATE,FREQ,EMAIL,PHONE,ADDRESS,CITY,PROVINCE,POSTAL,BANK INST,BANK TRANSIT,BANK ACCT,ACCOUNT TYPE,TD1 FED,TD1 PROV,START DATE,BANKING ON FILE,STATUS\n';
   emps.forEach(e => {
-    csv += `"${client?.name}","${s.period}","${e.first} ${e.last}","${e.type}","${e.payType}","${e.rate}"\n`;
+    const c = clients.find(x=>x.id===e.clientId);
+    csv += `"${c?.name||''}","${e.first}","${e.last}","${e.title}","${e.type}","${e.payType}","${e.rate}","${e.freq||''}","${e.email||''}","${e.phone||''}","${e.address||''}","${e.city||''}","${e.province||''}","${e.postal||''}","${e.bankInst||''}","${e.bankTransit||''}","${e.bankAcct||''}","${e.bankType||''}","${e.td1Fed||''}","${e.td1Prov||''}","${e.startDate||''}","${e.banking?'Yes':'No'}","${e.status}"\n`;
   });
-  downloadCSV(csv, `payroll-${client?.code}-${Date.now()}.csv`);
+  downloadCSV(csv, 'all-employees-'+Date.now()+'.csv');
 }
 
 function exportAll() {
-  let csv = 'Client,Type,Period/Employee,Submitted,Status,Notes\n';
-  db.submissions.forEach(s => {
-    const c = db.clients.find(x=>x.id===s.clientId);
+  // Export full summary of all submissions
+  let csv = 'CLIENT,TYPE,PERIOD / EMPLOYEE,PAY DATE,SUBMITTED,EMP COUNT,FLAGS,STATUS,NOTES\n';
+  const subs    = db.submissions ? Object.values(db.submissions) : [];
+  const clients = db.clients    ? Object.values(db.clients)    : [];
+  subs.forEach(s => {
+    const c      = clients.find(x=>x.id===s.clientId);
     const detail = s.type==='payroll' ? s.period : s.empName;
-    csv += `"${c?.name||''}","${s.type}","${detail}","${s.submitted}","${s.status}","${s.note||''}"\n`;
+    csv += `"${c?.name||''}","${s.type}","${detail}","${s.payDate||''}","${s.submitted}","${s.empCount||''}","${s.flags||0}","${s.status}","${s.note||''}"\n`;
   });
-  downloadCSV(csv, `paysync-export-${Date.now()}.csv`);
+  csv += '\n\n--- PAYROLL DETAIL ---\n';
+  subs.filter(s=>s.type==='payroll'&&s.hours).forEach(s => {
+    const c = clients.find(x=>x.id===s.clientId);
+    csv += '\n"CLIENT","PERIOD","EMPLOYEE","TYPE","PAY TYPE","RATE","REG HRS","OT HRS","VAC PAY","STAT","OTHER","GROSS PAY"\n';
+    Object.values(s.hours).forEach(h=>{
+      csv += `"${c?.name||''}","${s.period}","${h.empName}","${h.type}","${h.payType}","${h.rate}","${h.reg}","${h.ot}","${h.vac}","${h.stat?'Yes':'No'}","${h.other}","${h.grossPay}"\n`;
+    });
+  });
+  downloadCSV(csv, 'paysync-full-export-'+Date.now()+'.csv');
 }
 
 function downloadCSV(csv, filename) {
   const blob = new Blob([csv], {type:'text/csv'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
   a.download = filename;
   a.click();
 }
@@ -1805,43 +2009,45 @@ function downloadCSV(csv, filename) {
 //  MANAGE CLIENTS
 // ══════════════════════════════════════════════════════════════════════════
 function loadManageClients() {
-  const tbody = document.getElementById('clients-manage-tbody');
+  const tbody   = document.getElementById('clients-manage-tbody');
+  const clients = db.clients ? Object.values(db.clients) : [];
   tbody.innerHTML = '';
-  db.clients.forEach(c => {
-    const empCount = db.employees.filter(e=>e.clientId===c.id).length;
+  clients.forEach(c => {
+    const empCount = db.employees ? Object.values(db.employees).filter(e=>e.clientId===c.id).length : 0;
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><strong>${c.name}</strong></td>
+    tr.innerHTML = `<td><strong>${c.name}</strong></td>
       <td><code style="background:var(--surface-3);padding:2px 8px;border-radius:4px">${c.code}</code></td>
-      <td>${c.freq}</td>
-      <td>${empCount}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="removeClient('${c.id}')">Remove</button></td>
-    `;
+      <td>${c.freq}</td><td>${empCount}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="removeClient('${c.id}')">Remove</button></td>`;
     tbody.appendChild(tr);
   });
 }
 
-function addClient() {
+async function addClient() {
   const name = document.getElementById('new-client-name').value.trim();
   const code = document.getElementById('new-client-code').value.trim().toUpperCase();
   const freq = document.getElementById('new-client-freq').value;
-  if (!name || !code) { alert('Company name and access code are required.'); return; }
-  if (db.clients.find(c=>c.code===code)) { alert('That code is already in use. Choose a different one.'); return; }
-  db.clients.push({ id:'c'+Date.now(), name, code, freq });
-  saveData(db);
+  if (!name||!code) { alert('Company name and access code required.'); return; }
+  const clients = db.clients ? Object.values(db.clients) : [];
+  if (clients.find(c=>c.code===code)) { alert('Code already in use.'); return; }
+  const id = 'c'+Date.now();
+  if (!db.clients) db.clients = {};
+  db.clients[id] = { id, name, code, freq };
+  await saveData(db);
   document.getElementById('new-client-name').value='';
   document.getElementById('new-client-code').value='';
-  document.getElementById('add-client-msg').style.display='block';
-  setTimeout(()=>document.getElementById('add-client-msg').style.display='none', 2500);
+  const msg = document.getElementById('add-client-msg');
+  msg.style.display='block';
+  setTimeout(()=>msg.style.display='none',2500);
   loadManageClients();
 }
 
-function removeClient(id) {
-  if (!confirm('Remove this client? Their employees and submissions will also be removed.')) return;
-  db.clients     = db.clients.filter(c=>c.id!==id);
-  db.employees   = db.employees.filter(e=>e.clientId!==id);
-  db.submissions = db.submissions.filter(s=>s.clientId!==id);
-  saveData(db);
+async function removeClient(id) {
+  if (!confirm('Remove this client? Their data will also be removed.')) return;
+  if (db.clients)     delete db.clients[id];
+  if (db.employees)   Object.keys(db.employees).forEach(k=>{ if(db.employees[k].clientId===id) delete db.employees[k]; });
+  if (db.submissions) Object.keys(db.submissions).forEach(k=>{ if(db.submissions[k].clientId===id) delete db.submissions[k]; });
+  await saveData(db);
   loadManageClients();
 }
 
@@ -1850,22 +2056,19 @@ function removeClient(id) {
 // ══════════════════════════════════════════════════════════════════════════
 function formatSIN(el) {
   let v = el.value.replace(/\D/g,'').substring(0,9);
-  if (v.length > 6)      el.value = v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
-  else if (v.length > 3) el.value = v.slice(0,3)+'-'+v.slice(3);
-  else                   el.value = v;
+  if (v.length>6) el.value=v.slice(0,3)+'-'+v.slice(3,6)+'-'+v.slice(6);
+  else if (v.length>3) el.value=v.slice(0,3)+'-'+v.slice(3);
+  else el.value=v;
 }
-
 function formatPostal(el) {
-  let v = el.value.replace(/\s/g,'').toUpperCase().substring(0,6);
-  if (v.length > 3) el.value = v.slice(0,3)+' '+v.slice(3);
-  else              el.value = v;
+  let v=el.value.replace(/\s/g,'').toUpperCase().substring(0,6);
+  if(v.length>3) el.value=v.slice(0,3)+' '+v.slice(3); else el.value=v;
 }
-
 function togglePayRate() {
-  const t = document.getElementById('emp-pay-type').value;
-  document.getElementById('rate-label').innerHTML = (t==='salary'?'Annual Salary':'Hourly Rate') + ' <span class="req">*</span>';
-  document.getElementById('rate-help').textContent = t==='salary' ? 'Annual salary in CAD' : 'Hourly rate in CAD';
-  document.getElementById('emp-rate').placeholder = t==='salary' ? '65000' : '22.50';
+  const t=document.getElementById('emp-pay-type').value;
+  document.getElementById('rate-label').innerHTML=(t==='salary'?'Annual Salary':'Hourly Rate')+' <span class="req">*</span>';
+  document.getElementById('rate-help').textContent=t==='salary'?'Annual salary in CAD':'Hourly rate in CAD';
+  document.getElementById('emp-rate').placeholder=t==='salary'?'65000':'22.50';
 }
 </script>
 </body>
