@@ -1720,7 +1720,7 @@ async function submitNewEmployee() {
   db.employees[id] = {
     id, clientId: currentClientId,
     // Personal
-    first:p.first, last:p.last, dob:p.dob, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
+    first:p.first, last:p.last, dob:p.dob, sin:p.sin, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
     email:p.email, phone:p.phone, address:p.address, city:p.city, province:p.province, postal:p.postal,
     // Banking
     bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankType:b.type,
@@ -1742,9 +1742,9 @@ async function submitNewEmployee() {
     submitted:new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}),
     status:'new', note:r.notes||'',
     empDetails: {
-      first:p.first, last:p.last, dob:p.dob, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
+      first:p.first, last:p.last, dob:p.dob, sin:p.sin, sinMasked:'***-***-'+p.sin.replace(/-/g,'').slice(-3),
       email:p.email, phone:p.phone, address:p.address+', '+p.city+', '+p.province+' '+p.postal,
-      bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankType:b.type,
+      bankInst:b.inst, bankTransit:b.transit, bankAcct:b.acct, bankAcctFull:b.acctFull, bankType:b.type,
       title:r.title, type:r.type, payType:r.payType, rate:r.rate, freq:r.freq,
       td1Fed:r.td1Fed, td1Prov:r.td1Prov, extraTax:r.extraTax
     }
@@ -1935,45 +1935,127 @@ function exportPayroll(subId) {
 
 function exportEmployee(subId) {
   const subs = db.submissions ? Object.values(db.submissions) : [];
-  const s = subs.find(x=>x.id===subId);
+  const s    = subs.find(x=>x.id===subId);
   if (!s) return;
   const client = db.clients ? Object.values(db.clients).find(c=>c.id===s.clientId) : null;
   const d = s.empDetails || {};
 
+  const fields = [
+    ['CLIENT',                   client?.name       || ''],
+    ['SUBMITTED',                s.submitted        || ''],
+    ['--- PERSONAL INFORMATION','---'],
+    ['FIRST NAME',               d.first            || ''],
+    ['LAST NAME',                d.last             || ''],
+    ['FULL NAME',                (d.first||'')+' '+(d.last||'')],
+    ['DATE OF BIRTH',            d.dob              || ''],
+    ['SIN (FULL)',                d.sin              || '(not captured — re-submit)'],
+    ['SIN (MASKED)',              d.sinMasked        || ''],
+    ['EMAIL',                    d.email            || ''],
+    ['PHONE',                    d.phone            || ''],
+    ['--- ADDRESS',              '---'],
+    ['FULL ADDRESS',             d.address          || ''],
+    ['--- BANKING INFORMATION',  '---'],
+    ['BANK INSTITUTION #',       d.bankInst         || ''],
+    ['BANK TRANSIT #',           d.bankTransit      || ''],
+    ['BANK ACCOUNT # (FULL)',     d.bankAcctFull     || '(masked only — see below)'],
+    ['BANK ACCOUNT # (MASKED)',   d.bankAcct         || ''],
+    ['ACCOUNT TYPE',             d.bankType         || ''],
+    ['--- EMPLOYMENT DETAILS',   '---'],
+    ['START DATE',               s.startDate        || ''],
+    ['JOB TITLE',                d.title            || ''],
+    ['EMPLOYMENT TYPE',          d.type             || ''],
+    ['PAY TYPE',                 d.payType          || ''],
+    ['RATE ($)',                  d.rate             || ''],
+    ['PAY FREQUENCY',            d.freq             || ''],
+    ['--- TAX INFORMATION',      '---'],
+    ['TD1 FEDERAL ($)',           d.td1Fed           || ''],
+    ['TD1 PROVINCIAL ($)',        d.td1Prov          || ''],
+    ['EXTRA TAX PER PERIOD ($)',  d.extraTax         || '0'],
+    ['--- NOTES',                '---'],
+    ['ACCOUNTANT NOTES',         s.note             || ''],
+  ];
+
   let csv = 'FIELD,VALUE\n';
-  csv += `"Client","${client?.name||''}"\n`;
-  csv += `"Submitted","${s.submitted}"\n`;
-  csv += `"Full Name","${d.first||''} ${d.last||''}"\n`;
-  csv += `"Date of Birth","${d.dob||''}"\n`;
-  csv += `"SIN (masked)","${d.sinMasked||''}"\n`;
-  csv += `"Email","${d.email||''}"\n`;
-  csv += `"Phone","${d.phone||''}"\n`;
-  csv += `"Address","${d.address||''}"\n`;
-  csv += `"Bank Institution #","${d.bankInst||''}"\n`;
-  csv += `"Bank Transit #","${d.bankTransit||''}"\n`;
-  csv += `"Bank Account # (masked)","${d.bankAcct||''}"\n`;
-  csv += `"Account Type","${d.bankType||''}"\n`;
-  csv += `"Job Title","${d.title||''}"\n`;
-  csv += `"Employment Type","${d.type||''}"\n`;
-  csv += `"Pay Type","${d.payType||''}"\n`;
-  csv += `"Rate","${d.rate||''}"\n`;
-  csv += `"Pay Frequency","${d.freq||''}"\n`;
-  csv += `"TD1 Federal","${d.td1Fed||''}"\n`;
-  csv += `"TD1 Provincial","${d.td1Prov||''}"\n`;
-  csv += `"Extra Tax/Period","${d.extraTax||'0'}"\n`;
-  csv += `"Start Date","${s.startDate||''}"\n`;
-  downloadCSV(csv, 'new-employee-'+s.empName.replace(/\s+/g,'-')+'-'+Date.now()+'.csv');
+  fields.forEach(([k,v]) => { csv += '"'+k+'","'+(v||'').toString().replace(/"/g,"''")+'"\n'; });
+  downloadCSV(csv, 'EMPLOYEE-'+s.empName.replace(/\s+/g,'-')+'-'+new Date().toISOString().slice(0,10)+'.csv');
 }
 
 function exportAllEmployees() {
-  const emps = db.employees ? Object.values(db.employees) : [];
-  const clients = db.clients ? Object.values(db.clients) : [];
-  let csv = 'CLIENT,FIRST,LAST,TITLE,TYPE,PAY TYPE,RATE,FREQ,EMAIL,PHONE,ADDRESS,CITY,PROVINCE,POSTAL,BANK INST,BANK TRANSIT,BANK ACCT,ACCOUNT TYPE,TD1 FED,TD1 PROV,START DATE,BANKING ON FILE,STATUS\n';
-  emps.forEach(e => {
-    const c = clients.find(x=>x.id===e.clientId);
-    csv += `"${c?.name||''}","${e.first}","${e.last}","${e.title}","${e.type}","${e.payType}","${e.rate}","${e.freq||''}","${e.email||''}","${e.phone||''}","${e.address||''}","${e.city||''}","${e.province||''}","${e.postal||''}","${e.bankInst||''}","${e.bankTransit||''}","${e.bankAcct||''}","${e.bankType||''}","${e.td1Fed||''}","${e.td1Prov||''}","${e.startDate||''}","${e.banking?'Yes':'No'}","${e.status}"\n`;
+  const emps    = db.employees    ? Object.values(db.employees)    : [];
+  const clients = db.clients      ? Object.values(db.clients)      : [];
+  const subs    = db.submissions  ? Object.values(db.submissions).filter(s=>s.type==='employee') : [];
+
+  // Build enriched employee list — merge roster record with submission empDetails for full data
+  const rows = emps.map(e => {
+    const c    = clients.find(x=>x.id===e.clientId) || {};
+    // Find matching submission for extra details (full SIN, full bank acct)
+    const sub  = subs.find(s => s.empName === e.first+' '+e.last && s.clientId === e.clientId) || {};
+    const d    = sub.empDetails || {};
+    return {
+      client:       c.name        || '',
+      clientCode:   c.code        || '',
+      firstName:    e.first       || d.first      || '',
+      lastName:     e.last        || d.last       || '',
+      dob:          e.dob         || d.dob        || '',
+      sin:          e.sin         || d.sin        || '',
+      sinMasked:    e.sinMasked   || d.sinMasked  || '',
+      email:        e.email       || d.email      || '',
+      phone:        e.phone       || d.phone      || '',
+      address:      e.address     || '',
+      city:         e.city        || '',
+      province:     e.province    || '',
+      postal:       e.postal      || '',
+      fullAddress:  d.address     || ((e.address||'') + (e.city?', '+e.city:'') + (e.province?' '+e.province:'') + (e.postal?' '+e.postal:'')),
+      startDate:    e.startDate   || sub.startDate || '',
+      title:        e.title       || d.title      || '',
+      empType:      e.type        || d.type       || '',
+      payType:      e.payType     || d.payType    || '',
+      rate:         e.rate        || d.rate       || '',
+      freq:         e.freq        || d.freq       || '',
+      bankInst:     e.bankInst    || d.bankInst   || '',
+      bankTransit:  e.bankTransit || d.bankTransit|| '',
+      bankAcct:     d.bankAcctFull|| e.bankInst ? (d.bankAcctFull||e.bankAcct||'') : '',
+      bankAcctMask: e.bankAcct    || d.bankAcct   || '',
+      bankType:     e.bankType    || d.bankType   || '',
+      td1Fed:       e.td1Fed      || d.td1Fed     || '',
+      td1Prov:      e.td1Prov     || d.td1Prov    || '',
+      extraTax:     e.extraTax    || d.extraTax   || '0',
+      bankOnFile:   e.banking     ? 'Yes' : 'No',
+      td1OnFile:    e.td1         ? 'Yes' : 'No',
+      notes:        e.notes       || '',
+      status:       e.status      || 'active',
+    };
   });
-  downloadCSV(csv, 'all-employees-'+Date.now()+'.csv');
+
+  // Header
+  const headers = [
+    'CLIENT','CLIENT CODE',
+    'LAST NAME','FIRST NAME',
+    'DATE OF BIRTH','SIN (FULL)','SIN (MASKED)',
+    'EMAIL','PHONE',
+    'STREET ADDRESS','CITY','PROVINCE','POSTAL CODE','FULL ADDRESS',
+    'START DATE','JOB TITLE','EMPLOYMENT TYPE','PAY TYPE','RATE ($)','PAY FREQUENCY',
+    'BANK INSTITUTION #','BANK TRANSIT #','BANK ACCOUNT # (FULL)','BANK ACCOUNT # (MASKED)','ACCOUNT TYPE',
+    'TD1 FEDERAL ($)','TD1 PROVINCIAL ($)','EXTRA TAX/PERIOD ($)',
+    'BANKING ON FILE','TD1 ON FILE','NOTES','STATUS'
+  ];
+
+  let csv = headers.map(h=>'"'+h+'"').join(',') + '\n';
+  rows.forEach(r => {
+    csv += [
+      r.client, r.clientCode,
+      r.lastName, r.firstName,
+      r.dob, r.sin, r.sinMasked,
+      r.email, r.phone,
+      r.address, r.city, r.province, r.postal, r.fullAddress,
+      r.startDate, r.title, r.empType, r.payType, r.rate, r.freq,
+      r.bankInst, r.bankTransit, r.bankAcct, r.bankAcctMask, r.bankType,
+      r.td1Fed, r.td1Prov, r.extraTax,
+      r.bankOnFile, r.td1OnFile, r.notes, r.status
+    ].map(v=>'"'+(v||'').toString().replace(/"/g,"''")+'"').join(',') + '\n';
+  });
+
+  downloadCSV(csv, 'ALL-EMPLOYEES-COMPLETE-'+new Date().toISOString().slice(0,10)+'.csv');
 }
 
 function exportAll() {
