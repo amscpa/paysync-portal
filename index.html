@@ -767,6 +767,7 @@ code {
   border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
 
@@ -1639,6 +1640,28 @@ const FB_CONFIG = {
 const ADMIN_PIN = '1234';
 
 // ══════════════════════════════════════════════════════════════════════════
+//  ⚙️  EMAILJS CONFIG — fill in before deploying
+//  1. Go to https://www.emailjs.com and create a FREE account
+//  2. Add a service: Email Services -> Add Service -> Gmail
+//     -> Sign in with your Gmail -> copy the Service ID below
+//  3. Create a template: Email Templates -> Create New Template
+//     Use these variables in your template:
+//       {{submission_type}}  {{client_name}}  {{detail}}  {{submitted_date}}
+//     Set To Email: your two admin emails (comma-separated)
+//     Copy the Template ID below
+//  4. Go to Account -> Public Key and copy it below
+// ══════════════════════════════════════════════════════════════════════════
+const EJS_SERVICE_ID  = 'service_6d3svha';   // e.g. service_abc123
+const EJS_TEMPLATE_ID = 'template_vcd5cnd';  // e.g. template_xyz789
+const EJS_PUBLIC_KEY  = 'p-Eg5iEYmCUKsXSIl';    // e.g. aBcDeFgHiJkLmNoP
+
+// Two admin email addresses to notify
+const NOTIFY_EMAILS = [
+  'FIRST_ADMIN_EMAIL@example.com',   // <- replace with real email
+  'SECOND_ADMIN_EMAIL@example.com',  // <- replace with real email
+];
+
+// ══════════════════════════════════════════════════════════════════════════
 //  UI HELPERS
 // ══════════════════════════════════════════════════════════════════════════
 function showLoader(msg = 'Loading...') {
@@ -1798,6 +1821,32 @@ async function loadAllData() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  EMAIL NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════════════════
+function initEmailJS() {
+  try { emailjs.init({ publicKey: EJS_PUBLIC_KEY }); } catch(e) { console.warn('EmailJS not available:', e); }
+}
+
+async function sendNotification(type, clientName, detail) {
+  if (!EJS_SERVICE_ID || EJS_SERVICE_ID === 'YOUR_EMAILJS_SERVICE_ID') return; // not configured yet
+  const params = {
+    submission_type: type,
+    client_name:     clientName,
+    detail:          detail,
+    submitted_date:  new Date().toLocaleDateString('en-CA', {weekday:'long', year:'numeric', month:'long', day:'numeric'}),
+  };
+  // Send to both admin emails
+  for (const email of NOTIFY_EMAILS) {
+    try {
+      await emailjs.send(EJS_SERVICE_ID, EJS_TEMPLATE_ID, { ...params, to_email: email });
+    } catch(e) {
+      console.warn('Email notification failed for', email, e);
+      // Fail silently — don't block the user workflow
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  IN-MEMORY DATA STORE
 // ══════════════════════════════════════════════════════════════════════════
 let db = { clients: [], employees: [], submissions: [], empChanges: [] };
@@ -1885,6 +1934,9 @@ async function verifyAdmin() {
   currentClientId = 'admin';
   showPage('pg-admin');
 }
+
+// Initialise EmailJS on load
+initEmailJS();
 
 function logout() {
   currentClientId = null;
@@ -2080,6 +2132,9 @@ async function submitPayrollRun() {
       }
       document.getElementById('success-title').textContent = 'Submission Updated!';
       document.getElementById('success-msg').textContent   = `Your payroll run for ${fmt(start)} - ${fmt(end)} has been updated. Your accountant will review the changes.`;
+      // Send email notification (non-blocking)
+      const _clientU = clientById(currentClientId);
+      sendNotification('Payroll Run Updated', _clientU?.name || clientCode, `Pay period: ${fmt(start)} - ${fmt(end)} | Updated by client`);
     } else {
       const fields = {
         SubType: 'payroll', ClientCode: clientCode,
@@ -2092,6 +2147,9 @@ async function submitPayrollRun() {
       db.submissions.push(mapSubmission(created));
       document.getElementById('success-title').textContent = 'Payroll Run Submitted!';
       document.getElementById('success-msg').textContent   = `Pay period ${fmt(start)} - ${fmt(end)} received. Your accountant will review and process within 1-2 business days.`;
+      // Send email notification (non-blocking)
+      const _client1 = clientById(currentClientId);
+      sendNotification('Payroll Run', _client1?.name || clientCode, `Pay period: ${fmt(start)} - ${fmt(end)} | Employees: ${emps.length}${flags ? ' | OT flags: ' + flags : ''}`);
     }
   } catch(e) {
     console.error('SUBMIT ERROR:', e);
@@ -2246,6 +2304,9 @@ async function submitNewEmployee() {
 
   document.getElementById('success-title').textContent = `${p.first} ${p.last} Added!`;
   document.getElementById('success-msg').textContent   = `New employee profile submitted. Your accountant will set up payroll and confirm within 1 business day.`;
+  // Send email notification (non-blocking)
+  const _clientE = clientById(currentClientId);
+  sendNotification('New Employee', _clientE?.name || clientCode, `Employee: ${p.first} ${p.last} | Start date: ${r.startDate} | Title: ${r.title}`);
   showPage('pg-success');
 }
 
@@ -2753,6 +2814,10 @@ async function submitEmpChange() {
 
     closeEditEmpModal();
     loadEditEmployeeList();
+    // Send email notification (non-blocking)
+    const _clientC = clientById(currentClientId);
+    const _changedFields = diffs.map(d => d.fieldLabel).join(', ');
+    sendNotification('Employee Info Change', _clientC?.name || clientCode, `Employee: ${emp.first} ${emp.last} | Fields changed: ${_changedFields}`);
     showToast(`${diffs.length} change${diffs.length>1?'s':''} saved and sent to your accountant for review.`, 'success', 5000);
   } catch(e) {
     showToast('Save failed - check your Firebase connection.', 'error', 5000);
