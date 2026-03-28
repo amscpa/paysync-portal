@@ -477,7 +477,7 @@ select {
 .alert-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
 
 /* ══════════ ADMIN DASHBOARD ══════════ */
-.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 30px; }
+.stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 30px; }
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -628,7 +628,7 @@ select {
   .login-left { display: none; }
   .login-right { padding: 48px 32px; }
   .client-menu { grid-template-columns: 1fr; }
-  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .stats-grid { grid-template-columns: 1fr 1fr 1fr; }
   .form-row, .form-row-3 { grid-template-columns: 1fr; }
   .main-content, .main-content-wide { padding: 24px 16px; }
 }
@@ -739,6 +739,32 @@ code {
   0% { box-shadow: 0 0 0 0 rgba(14,160,143,.5); }
   70% { box-shadow: 0 0 0 8px rgba(14,160,143,0); }
   100% { box-shadow: 0 0 0 0 rgba(14,160,143,0); }
+}
+
+/* ══════════ MODAL ══════════ */
+.modal-overlay {
+  display:none;position:fixed;inset:0;background:rgba(11,22,40,.65);
+  z-index:8000;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.open { display:flex; }
+.modal-box {
+  background:var(--surface);border-radius:var(--r-xl);
+  box-shadow:var(--shadow-xl);padding:36px 40px;
+  max-width:520px;width:100%;animation:pageIn .25s ease;
+}
+.modal-box h3 { font-size:20px;font-weight:700;margin-bottom:8px; }
+.modal-box p  { color:var(--ink-muted);font-size:14px;margin-bottom:24px; }
+.modal-actions { display:flex;gap:10px;justify-content:flex-end;margin-top:24px; }
+
+/* ══════════ CHANGE DIFF ══════════ */
+.change-old { color:var(--red);text-decoration:line-through;font-size:13px; }
+.change-new { color:var(--teal);font-weight:600;font-size:13px; }
+.change-arrow { color:var(--ink-muted);margin:0 6px;font-size:12px; }
+.badge-pending-changes {
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(192,57,43,.1);color:var(--red);
+  border:1px solid rgba(192,57,43,.2);
+  border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;
 }
 </style>
 </head>
@@ -864,6 +890,12 @@ code {
         <span class="menu-arrow">→</span>
         <h3>Submission History</h3>
         <p>View your past payroll submissions and their current processing status.</p>
+      </div>
+      <div class="menu-card gold" onclick="showPage('pg-edit-employee')">
+        <div class="menu-icon gold">✏️</div>
+        <span class="menu-arrow">→</span>
+        <h3>Update Employee Info</h3>
+        <p>Update an employee’s name, contact, job title or pay rate. Changes are logged for your accountant.</p>
       </div>
     </div>
   </div>
@@ -1150,6 +1182,128 @@ code {
   </div>
 </div>
 
+
+<!-- ══════════════════════════════════════════════ EDIT EMPLOYEE ══════════════════════════════════════════════ -->
+<div id="pg-edit-employee" class="page">
+  <div class="topbar">
+    <div class="topbar-brand"><div class="topbar-logo">P</div><span class="topbar-name">Pay<span>Sync</span></span></div>
+    <div class="topbar-actions">
+      <span class="topbar-client-badge" id="client-badge-6"></span>
+      <button class="btn-ghost-white" onclick="showPage('pg-client-home')">&#8592; Back</button>
+    </div>
+  </div>
+  <div class="main-content">
+    <div class="breadcrumb"><a href="#" onclick="showPage('pg-client-home')">Home</a><span class="breadcrumb-sep">&#8250;</span>Update Employee Info</div>
+    <div class="page-header">
+      <div>
+        <h2>Update Employee Info</h2>
+        <p style="margin-top:4px">Select an employee to update. You will be asked to confirm your access code before any changes are saved.</p>
+      </div>
+    </div>
+    <div class="alert alert-info" style="margin-bottom:24px">
+      <span class="alert-icon">&#8505;&#65039;</span>
+      <div>All changes are logged and sent to your accountant for review. Banking details and SIN cannot be changed here — contact your accountant directly for those.</div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding:0;overflow-x:auto">
+        <table class="submissions-table" id="edit-emp-list-table">
+          <thead><tr><th>Name</th><th>Title</th><th>Type</th><th>Pay</th><th>Action</th></tr></thead>
+          <tbody id="edit-emp-list-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ RE-AUTH MODAL ══════════ -->
+<div id="modal-reauth" class="modal-overlay">
+  <div class="modal-box">
+    <h3>&#128274; Confirm Your Identity</h3>
+    <p>Enter your company access code to proceed with editing employee information.</p>
+    <div class="form-group">
+      <label>Company Access Code <span class="req">*</span></label>
+      <input type="text" id="reauth-code" placeholder="e.g. SMITH2024"
+        style="font-size:18px;letter-spacing:2px;text-transform:uppercase;font-weight:600"
+        oninput="this.value=this.value.toUpperCase()">
+      <div class="field-error" id="reauth-error">Incorrect code. Please try again.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeReauth()">Cancel</button>
+      <button class="btn btn-primary" style="max-width:160px" onclick="confirmReauth()">Confirm &#8594;</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ EDIT EMPLOYEE FORM MODAL ══════════ -->
+<div id="modal-edit-emp" class="modal-overlay">
+  <div class="modal-box" style="max-width:640px;max-height:90vh;overflow-y:auto">
+    <h3>&#9999;&#65039; Edit Employee</h3>
+    <p id="modal-edit-emp-subtitle">Update the fields below. Only changed fields will be logged.</p>
+
+    <div class="section-title">Personal Details</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>First Name <span class="req">*</span></label>
+        <input type="text" id="eedit-first" placeholder="Legal first name">
+      </div>
+      <div class="form-group">
+        <label>Last Name <span class="req">*</span></label>
+        <input type="text" id="eedit-last" placeholder="Legal last name">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Personal Email</label>
+        <input type="email" id="eedit-email" placeholder="employee@email.com">
+      </div>
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input type="tel" id="eedit-phone" placeholder="(403) 555-0100">
+      </div>
+    </div>
+
+    <div class="section-title mt-24">Job Details</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Job Title <span class="req">*</span></label>
+        <input type="text" id="eedit-title" placeholder="e.g. Office Manager">
+      </div>
+      <div class="form-group">
+        <label>Employment Type <span class="req">*</span></label>
+        <select id="eedit-type">
+          <option value="FT">Full-Time</option>
+          <option value="PT">Part-Time</option>
+          <option value="contract">Contract</option>
+          <option value="casual">Casual</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Pay Type <span class="req">*</span></label>
+        <select id="eedit-paytype" onchange="document.getElementById('eedit-rate-help').textContent=this.value==='salary'?'Annual salary in CAD':'Hourly rate in CAD'">
+          <option value="hourly">Hourly</option>
+          <option value="salary">Salaried</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Pay Rate <span class="req">*</span></label>
+        <input type="number" id="eedit-rate" placeholder="0.00" step="0.01" min="0">
+        <div class="help-text" id="eedit-rate-help">Hourly rate in CAD</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Reason for Change <span class="req">*</span></label>
+      <textarea id="eedit-reason" placeholder="e.g. Employee got a raise, name legally changed, correcting a typo..." style="min-height:70px"></textarea>
+      <div class="field-error" id="eedit-reason-err">Please provide a reason for the change.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeEditEmpModal()">Cancel</button>
+      <button class="btn btn-gold" style="padding:12px 28px" onclick="submitEmpChange()">&#10003;&nbsp; Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════════ PAYROLL RUN ══════════════════════════════════════════════ -->
 <div id="pg-payroll-run" class="page">
   <div class="topbar">
@@ -1351,6 +1505,7 @@ code {
       <button class="admin-tab active" onclick="switchTab('tab-payroll')">📋 Payroll Runs</button>
       <button class="admin-tab" onclick="switchTab('tab-employees')">👤 New Employees</button>
       <button class="admin-tab" onclick="switchTab('tab-clients')">🏢 Client Overview</button>
+      <button class="admin-tab" onclick="switchTab('tab-emp-changes')" id="tab-btn-emp-changes">📝 Employee Changes <span id="emp-changes-badge" style="display:none;background:var(--red);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;margin-left:4px"></span></button>
     </div>
 
     <div id="tab-payroll" class="tab-content">
@@ -1381,6 +1536,21 @@ code {
           <table class="submissions-table" id="admin-clients-table">
             <thead><tr><th>Client Name</th><th>Code</th><th>Employees</th><th>Last Submission</th><th>Status</th></tr></thead>
             <tbody id="admin-clients-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-emp-changes" class="tab-content" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div></div>
+        <button class="btn btn-sm btn-outline" onclick="exportEmpChanges()">&#8595; Export Changes (CSV)</button>
+      </div>
+      <div class="card">
+        <div class="card-body" style="padding:0;overflow-x:auto">
+          <table class="submissions-table" id="admin-emp-changes-table">
+            <thead><tr><th>Client</th><th>Employee</th><th>Field</th><th>Old Value</th><th>New Value</th><th>Reason</th><th>Changed</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="admin-emp-changes-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -1612,13 +1782,25 @@ async function loadAllData() {
     db.clients     = cr.map(mapClient);
     db.employees   = er.map(mapEmployee);
     db.submissions = sr.map(mapSubmission);
+    // Load emp_changes for admin badge (non-blocking)
+    try {
+      const chgDocs = await fbFetch('emp_changes');
+      db.empChanges = chgDocs.map(doc => {
+        const id = doc.name.split('/').pop();
+        const f = {};
+        if (doc.fields) for (const [k,v] of Object.entries(doc.fields)) {
+          f[k] = v.stringValue!==undefined?v.stringValue:v.booleanValue!==undefined?v.booleanValue:v.integerValue!==undefined?Number(v.integerValue):'';
+        }
+        return { id, _rid: id, ...f, status: f.Status||'pending' };
+      });
+    } catch(_e) { db.empChanges = []; }
   } finally { hideLoader(); }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  IN-MEMORY DATA STORE
 // ══════════════════════════════════════════════════════════════════════════
-let db = { clients: [], employees: [], submissions: [] };
+let db = { clients: [], employees: [], submissions: [], empChanges: [] };
 let currentClientId = null;
 let currentEmpStep  = 1;
 let empFormData     = {};
@@ -1639,6 +1821,7 @@ function showPage(id) {
   if (id === 'pg-client-home')    loadClientHome();
   if (id === 'pg-payroll-run')    { if (!editingSubId) resetPayrollForm(); loadPayrollRun(); }
   if (id === 'pg-view-employees') loadRoster();
+  if (id === 'pg-edit-employee')  loadEditEmployeeList();
   if (id === 'pg-history')        loadHistory();
   if (id === 'pg-admin')          loadAdminDashboard();
   if (id === 'pg-admin-clients')  loadManageClients();
@@ -1727,7 +1910,7 @@ document.getElementById('admin-pin').addEventListener('input', function() {
 function loadClientHome() {
   const client = clientById(currentClientId);
   if (!client) return;
-  ['client-badge','client-badge-2','client-badge-3','client-badge-4','client-badge-5'].forEach(id => {
+  ['client-badge','client-badge-2','client-badge-3','client-badge-4','client-badge-5','client-badge-6'].forEach(id => {
     const el = document.getElementById(id); if (el) el.textContent = client.name;
   });
   document.getElementById('client-welcome').textContent = 'Welcome, ' + client.name.split(' ')[0];
@@ -2135,12 +2318,17 @@ function loadAdminDashboard() {
   const newEmps  = db.submissions.filter(s=>s.type==='employee');
   const pending  = db.submissions.filter(s=>s.status!=='done');
   const flags    = db.submissions.filter(s=>s.flags>0);
+  const pendingChanges = db.empChanges ? db.empChanges.filter(c=>(c.status||c.Status)==='pending') : [];
+  // Update employee changes badge on tab
+  const _ecBadge = document.getElementById('emp-changes-badge');
+  if (_ecBadge) { _ecBadge.textContent = pendingChanges.length; _ecBadge.style.display = pendingChanges.length ? 'inline' : 'none'; }
 
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card accent-navy"><div class="stat-label">Total Clients</div><div class="stat-value">${db.clients.length}</div><div class="stat-sub">Active companies</div></div>
     <div class="stat-card accent-gold"><div class="stat-label">Pending Review</div><div class="stat-value">${pending.length}</div><div class="stat-sub">Submissions awaiting action</div></div>
     <div class="stat-card accent-teal"><div class="stat-label">New Employees</div><div class="stat-value">${newEmps.length}</div><div class="stat-sub">Onboarding submissions</div></div>
-    <div class="stat-card accent-red"><div class="stat-label">OT Flags</div><div class="stat-value">${flags.length}</div><div class="stat-sub">Overtime alerts to verify</div></div>`;
+    <div class="stat-card accent-red"><div class="stat-label">OT Flags</div><div class="stat-value">${flags.length}</div><div class="stat-sub">Overtime alerts to verify</div></div>
+    <div class="stat-card" style="border-top:3px solid var(--gold-dk)"><div class="stat-label">Emp. Changes</div><div class="stat-value">${pendingChanges.length}</div><div class="stat-sub">Pending review</div></div>`;
 
   const ptbody = document.getElementById('admin-payroll-tbody');
   ptbody.innerHTML = '';
@@ -2208,8 +2396,9 @@ function switchTab(id) {
   document.querySelectorAll('.tab-content').forEach(t=>t.style.display='none');
   document.getElementById(id).style.display='block';
   document.querySelectorAll('.admin-tab').forEach((b,i) => {
-    b.classList.toggle('active', ['tab-payroll','tab-employees','tab-clients'][i]===id);
+    b.classList.toggle('active', ['tab-payroll','tab-employees','tab-clients','tab-emp-changes'][i]===id);
   });
+  if (id === 'tab-emp-changes') loadEmpChangesTab();
 }
 
 async function markDone(subId) {
@@ -2370,6 +2559,305 @@ async function removeClient(id) {
     loadManageClients(); showToast('Client removed.', 'info');
   } catch(e) { showToast('Failed to remove client.', 'error'); console.error(e); }
   finally { hideLoader(); }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════
+//  EMPLOYEE CHANGES — CLIENT SIDE
+// ══════════════════════════════════════════════════════════════════════════
+
+let reauthTarget = null;      // employee id waiting for re-auth
+let editingEmpId = null;      // employee being edited
+let editingEmpOriginal = {};  // original values snapshot
+
+function loadEditEmployeeList() {
+  const client = clientById(currentClientId);
+  if (!client) return;
+  const el = document.getElementById('client-badge-6');
+  if (el) el.textContent = client.name;
+
+  const emps  = employeesForClient(currentClientId);
+  const tbody = document.getElementById('edit-emp-list-tbody');
+  tbody.innerHTML = '';
+  if (!emps.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">&#128101;</div><h4>No employees yet</h4><p>Add employees first before editing their info.</p></div></td></tr>`;
+    return;
+  }
+  emps.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${e.first} ${e.last}</strong></td>
+      <td>${e.title}</td>
+      <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
+      <td>${e.payType==='hourly'?'$'+e.rate+'/hr':'$'+Number(e.rate).toLocaleString('en-CA')+'/yr'}</td>
+      <td><button class="btn btn-sm btn-outline" onclick="startEditEmployee('${e.id}')">&#9999;&#65039; Edit</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function startEditEmployee(empId) {
+  reauthTarget = empId;
+  document.getElementById('reauth-code').value = '';
+  document.getElementById('reauth-error').classList.remove('show');
+  document.getElementById('reauth-code').classList.remove('error');
+  document.getElementById('modal-reauth').classList.add('open');
+  setTimeout(() => document.getElementById('reauth-code').focus(), 100);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('modal-reauth').classList.contains('open')) confirmReauth();
+});
+
+function closeReauth() {
+  reauthTarget = null;
+  document.getElementById('modal-reauth').classList.remove('open');
+}
+
+function confirmReauth() {
+  const code = document.getElementById('reauth-code').value.trim().toUpperCase();
+  const client = clientById(currentClientId);
+  if (!client || code !== client.code) {
+    document.getElementById('reauth-error').classList.add('show');
+    document.getElementById('reauth-code').classList.add('error');
+    document.getElementById('reauth-code').animate(
+      [{transform:'translateX(-4px)'},{transform:'translateX(4px)'},{transform:'translateX(-4px)'},{transform:'translateX(4px)'},{transform:'translateX(0)'}],
+      {duration:300}
+    );
+    return;
+  }
+  document.getElementById('modal-reauth').classList.remove('open');
+  openEditEmpModal(reauthTarget);
+  reauthTarget = null;
+}
+
+function openEditEmpModal(empId) {
+  const emp = db.employees.find(e => e.id === empId);
+  if (!emp) return;
+  editingEmpId = empId;
+  // Snapshot original values
+  editingEmpOriginal = { first: emp.first, last: emp.last, title: emp.title,
+    type: emp.type, payType: emp.payType, rate: emp.rate,
+    email: emp.email || '', phone: emp.phone || '' };
+
+  document.getElementById('modal-edit-emp-subtitle').textContent = `Editing: ${emp.first} ${emp.last}`;
+  document.getElementById('eedit-first').value   = emp.first || '';
+  document.getElementById('eedit-last').value    = emp.last  || '';
+  document.getElementById('eedit-email').value   = emp.email || '';
+  document.getElementById('eedit-phone').value   = emp.phone || '';
+  document.getElementById('eedit-title').value   = emp.title || '';
+  document.getElementById('eedit-type').value    = emp.type  || 'FT';
+  document.getElementById('eedit-paytype').value = emp.payType || 'hourly';
+  document.getElementById('eedit-rate').value    = emp.rate  || '';
+  document.getElementById('eedit-rate-help').textContent = emp.payType === 'salary' ? 'Annual salary in CAD' : 'Hourly rate in CAD';
+  document.getElementById('eedit-reason').value  = '';
+  document.getElementById('eedit-reason-err').classList.remove('show');
+  document.getElementById('modal-edit-emp').classList.add('open');
+}
+
+// eedit-paytype listener — attached when modal opens (safe)
+
+function closeEditEmpModal() {
+  editingEmpId = null;
+  document.getElementById('modal-edit-emp').classList.remove('open');
+}
+
+async function submitEmpChange() {
+  const reason = document.getElementById('eedit-reason').value.trim();
+  if (!reason) {
+    document.getElementById('eedit-reason-err').classList.add('show');
+    showToast('Please provide a reason for the change.', 'error');
+    return;
+  }
+
+  const newFirst   = document.getElementById('eedit-first').value.trim();
+  const newLast    = document.getElementById('eedit-last').value.trim();
+  const newEmail   = document.getElementById('eedit-email').value.trim();
+  const newPhone   = document.getElementById('eedit-phone').value.trim();
+  const newTitle   = document.getElementById('eedit-title').value.trim();
+  const newType    = document.getElementById('eedit-type').value;
+  const newPayType = document.getElementById('eedit-paytype').value;
+  const newRate    = parseFloat(document.getElementById('eedit-rate').value) || 0;
+
+  if (!newFirst || !newLast || !newTitle) {
+    showToast('First name, last name and job title are required.', 'error');
+    return;
+  }
+
+  // Build diff — only fields that changed
+  const fieldLabels = { first:'First Name', last:'Last Name', email:'Email', phone:'Phone',
+    title:'Job Title', type:'Employment Type', payType:'Pay Type', rate:'Pay Rate' };
+  const newVals = { first:newFirst, last:newLast, email:newEmail, phone:newPhone,
+    title:newTitle, type:newType, payType:newPayType, rate:newRate };
+  const diffs = [];
+  for (const key of Object.keys(fieldLabels)) {
+    const oldVal = String(editingEmpOriginal[key] || '');
+    const newVal = String(newVals[key] || '');
+    if (oldVal !== newVal) {
+      diffs.push({ field: key, fieldLabel: fieldLabels[key], oldValue: oldVal, newValue: newVal });
+    }
+  }
+
+  if (!diffs.length) {
+    showToast('No changes detected. Nothing was saved.', 'warn');
+    closeEditEmpModal();
+    return;
+  }
+
+  const emp = db.employees.find(e => e.id === editingEmpId);
+  const clientCode = codeById(currentClientId);
+  const today = new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+  const now   = new Date().toISOString();
+
+  showLoader('Saving changes...');
+  try {
+    // 1. Update the employee record directly
+    const updatedFields = {};
+    if (newFirst   !== editingEmpOriginal.first)   updatedFields.First   = newFirst;
+    if (newLast    !== editingEmpOriginal.last)     updatedFields.Last    = newLast;
+    if (newEmail   !== editingEmpOriginal.email)    updatedFields.Email   = newEmail;
+    if (newPhone   !== editingEmpOriginal.phone)    updatedFields.Phone   = newPhone;
+    if (newTitle   !== editingEmpOriginal.title)    updatedFields.Title   = newTitle;
+    if (newType    !== editingEmpOriginal.type)     updatedFields.Type    = newType;
+    if (newPayType !== editingEmpOriginal.payType)  updatedFields.PayType = newPayType;
+    if (newRate    !== editingEmpOriginal.rate)     updatedFields.Rate    = newRate;
+    await fbUpdate('employees', emp._rid, updatedFields);
+
+    // Update in-memory
+    Object.assign(emp, { first:newFirst, last:newLast, email:newEmail, phone:newPhone,
+      title:newTitle, type:newType, payType:newPayType, rate:newRate });
+
+    // 2. Log each changed field as a separate record in emp_changes
+    const changePromises = diffs.map(d =>
+      fbCreate('emp_changes', {
+        ClientCode:  clientCode,
+        EmpId:       emp._rid,
+        EmpName:     `${newFirst} ${newLast}`,
+        FieldName:   d.field,
+        FieldLabel:  d.fieldLabel,
+        OldValue:    d.oldValue,
+        NewValue:    d.newValue,
+        Reason:      reason,
+        ChangedAt:   today,
+        ChangedAtISO: now,
+        Status:      'pending'
+      })
+    );
+    const createdDocs = await Promise.all(changePromises);
+
+    // Add to in-memory
+    if (!db.empChanges) db.empChanges = [];
+    createdDocs.forEach(doc => {
+      const f = doc.fields ? Object.fromEntries(Object.entries(doc.fields).map(([k,v]) => [k, v.stringValue||v.booleanValue||v.integerValue||''])) : {};
+      db.empChanges.push({ id: doc.name?.split('/').pop(), _rid: doc.name?.split('/').pop(), ...f, status: 'pending' });
+    });
+
+    closeEditEmpModal();
+    loadEditEmployeeList();
+    showToast(`${diffs.length} change${diffs.length>1?'s':''} saved and sent to your accountant for review.`, 'success', 5000);
+  } catch(e) {
+    showToast('Save failed - check your Firebase connection.', 'error', 5000);
+    console.error(e);
+  } finally { hideLoader(); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  EMPLOYEE CHANGES — ADMIN SIDE
+// ══════════════════════════════════════════════════════════════════════════
+
+async function loadEmpChangesTab() {
+  // Fetch fresh from Firebase if not loaded
+  if (!db.empChanges) {
+    showLoader('Loading employee changes...');
+    try {
+      const docs = await fbFetch('emp_changes');
+      db.empChanges = docs.map(doc => {
+        const id = doc.name.split('/').pop();
+        const f  = {};
+        if (doc.fields) {
+          for (const [k,v] of Object.entries(doc.fields)) {
+            f[k] = v.stringValue !== undefined ? v.stringValue
+                 : v.booleanValue !== undefined ? v.booleanValue
+                 : v.integerValue !== undefined ? Number(v.integerValue)
+                 : '';
+          }
+        }
+        return { id, _rid: id, ...f, status: f.Status || 'pending' };
+      });
+    } catch(e) {
+      showToast('Could not load employee changes.', 'error');
+      console.error(e);
+      return;
+    } finally { hideLoader(); }
+  }
+
+  const tbody = document.getElementById('admin-emp-changes-tbody');
+  tbody.innerHTML = '';
+
+  // Update badge on tab
+  const pending = db.empChanges.filter(c => (c.status||c.Status) === 'pending');
+  const badge = document.getElementById('emp-changes-badge');
+  if (badge) { badge.textContent = pending.length; badge.style.display = pending.length ? 'inline' : 'none'; }
+
+  if (!db.empChanges.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="empty-state-icon">&#9989;</div><h4>No employee changes yet</h4><p>Employee info updates submitted by clients will appear here.</p></div></td></tr>`;
+    return;
+  }
+
+  // Sort: pending first, then by date descending
+  const sorted = [...db.empChanges].sort((a,b) => {
+    if (a.status==='pending' && b.status!=='pending') return -1;
+    if (a.status!=='pending' && b.status==='pending') return 1;
+    return (b.ChangedAtISO||'').localeCompare(a.ChangedAtISO||'');
+  });
+
+  sorted.forEach(c => {
+    const client = db.clients.find(x => x.code === (c.ClientCode||c.clientCode));
+    const isPending = (c.status||c.Status) === 'pending';
+    const statusBadge = isPending
+      ? '<span class="status-badge status-review"><span class="status-dot"></span>Pending</span>'
+      : '<span class="status-badge status-done"><span class="status-dot"></span>Reviewed</span>';
+    const reviewBtn = isPending
+      ? `<button class="btn btn-sm btn-teal" onclick="markChangeReviewed('${c.id||c._rid}')">Mark Reviewed</button>`
+      : '<span style="color:var(--ink-muted);font-size:12px">Done</span>';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${client?.name||c.ClientCode||'-'}</strong></td>
+      <td>${c.EmpName||'-'}</td>
+      <td><strong>${c.FieldLabel||c.FieldName||'-'}</strong></td>
+      <td><span class="change-old">${c.OldValue||'-'}</span></td>
+      <td><span class="change-new">${c.NewValue||'-'}</span></td>
+      <td style="font-size:13px;color:var(--ink-muted);max-width:180px">${c.Reason||'-'}</td>
+      <td style="font-size:12px;color:var(--ink-muted)">${c.ChangedAt||'-'}</td>
+      <td>${statusBadge}</td>
+      <td>${reviewBtn}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function markChangeReviewed(changeId) {
+  if (!db.empChanges) return;
+  const c = db.empChanges.find(x => x.id === changeId || x._rid === changeId);
+  if (!c) return;
+  showLoader('Marking as reviewed...');
+  try {
+    await fbUpdate('emp_changes', c._rid, { Status: 'reviewed' });
+    c.status = 'reviewed'; c.Status = 'reviewed';
+    loadEmpChangesTab();
+    showToast('Marked as reviewed.', 'success');
+  } catch(e) { showToast('Update failed.', 'error'); console.error(e); }
+  finally { hideLoader(); }
+}
+
+function exportEmpChanges() {
+  if (!db.empChanges || !db.empChanges.length) { showToast('No employee changes to export.', 'warn'); return; }
+  let csv = 'Client,Employee,Field,Old Value,New Value,Reason,Changed Date,Status\n';
+  db.empChanges.forEach(c => {
+    const client = db.clients.find(x => x.code === (c.ClientCode||c.clientCode));
+    csv += `"${client?.name||c.ClientCode||''}","${c.EmpName||''}","${c.FieldLabel||c.FieldName||''}","${c.OldValue||''}","${c.NewValue||''}","${c.Reason||''}","${c.ChangedAt||''}","${c.status||c.Status||''}"
+`;
+  });
+  downloadCSV(csv, `employee-changes-${Date.now()}.csv`);
+  showToast('Employee changes exported!', 'success');
 }
 
 // ══════════════════════════════════════════════════════════════════════════
