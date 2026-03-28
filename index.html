@@ -1452,26 +1452,11 @@ code {
 
 <script>
 // ══════════════════════════════════════════════════════════════════════════
-//  ⚙️  STORAGE BACKEND — set to 'airtable' or 'firebase'
-// ══════════════════════════════════════════════════════════════════════════
-const STORAGE_BACKEND = 'firebase';   // ← change to 'firebase' to use Firebase
-
-// ══════════════════════════════════════════════════════════════════════════
-//  ⚙️  AIRTABLE CONFIG (used when STORAGE_BACKEND = 'airtable')
-//  1. Base ID: open your base → URL bar → copy the app... part
-//  2. Token: airtable.com/create/tokens → scopes: records:read + records:write
-//  Tables needed: Clients, Employees, Submissions (see documentation)
-// ══════════════════════════════════════════════════════════════════════════
-const AT_TOKEN   = 'YOUR_AIRTABLE_TOKEN_HERE';
-const AT_BASE_ID = 'YOUR_BASE_ID_HERE';
-const AT_TABLES  = { clients: 'Clients', employees: 'Employees', submissions: 'Submissions' };
-
-// ══════════════════════════════════════════════════════════════════════════
-//  ⚙️  FIREBASE CONFIG (used when STORAGE_BACKEND = 'firebase')
-//  1. Go to console.firebase.google.com → create project → add web app
-//  2. Copy the config object values below
-//  3. In Firestore → Rules → set allow read, write: if true (for now)
-//  Collections created automatically: clients, employees, submissions
+//  ⚙️  FIREBASE CONFIG — fill in your values below
+//  1. Go to console.firebase.google.com → your project
+//  2. Gear icon → Project settings → Your apps → </> web icon
+//  3. Copy apiKey and projectId from the config shown
+//  Collections are created automatically: clients, employees, submissions
 // ══════════════════════════════════════════════════════════════════════════
 const FB_CONFIG = {
   apiKey:    'AIzaSyDr22C7ZTp39f0qPUeD7s5iuRCTPsRlTf0',
@@ -1503,126 +1488,49 @@ function showToast(msg, type = 'info', duration = 3500) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  AIRTABLE ADAPTER
+//  FIREBASE HELPERS (Firestore REST API — no SDK needed)
 // ══════════════════════════════════════════════════════════════════════════
-const _AT_URL     = t => `https://api.airtable.com/v0/${AT_BASE_ID}/${encodeURIComponent(AT_TABLES[t])}`;
-const _AT_HEADERS = () => ({ 'Authorization': `Bearer ${AT_TOKEN}`, 'Content-Type': 'application/json' });
+const FB_BASE = () => `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.projectId}/databases/(default)/documents`;
+const FB_KEY  = () => `?key=${FB_CONFIG.apiKey}`;
 
-async function _atFetch(tableKey) {
-  let url = _AT_URL(tableKey) + '?pageSize=100';
-  const rows = [];
-  let offset = '';
-  do {
-    const res = await fetch(offset ? url + '&offset=' + offset : url, { headers: _AT_HEADERS() });
-    if (!res.ok) throw new Error(`Airtable fetch error ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    rows.push(...data.records);
-    offset = data.offset || '';
-  } while (offset);
-  return rows;
-}
-
-async function _atCreate(tableKey, fields) {
-  const res = await fetch(_AT_URL(tableKey), {
-    method: 'POST', headers: _AT_HEADERS(),
-    body: JSON.stringify({ records: [{ fields }] })
-  });
-  if (!res.ok) throw new Error(`Airtable create error ${res.status}: ${await res.text()}`);
-  return (await res.json()).records[0];
-}
-
-async function _atUpdate(tableKey, recordId, fields) {
-  const res = await fetch(_AT_URL(tableKey) + '/' + recordId, {
-    method: 'PATCH', headers: _AT_HEADERS(),
-    body: JSON.stringify({ fields })
-  });
-  if (!res.ok) throw new Error(`Airtable update error ${res.status}: ${await res.text()}`);
-  return (await res.json());
-}
-
-async function _atDelete(tableKey, recordId) {
-  const res = await fetch(_AT_URL(tableKey) + '/' + recordId, { method: 'DELETE', headers: _AT_HEADERS() });
-  if (!res.ok) throw new Error(`Airtable delete error ${res.status}: ${await res.text()}`);
-}
-
-// Map Airtable records → internal objects
-function _atMapClient(r) {
-  return { id: r.id, _rid: r.id, name: r.fields.Name||'', code: r.fields.Code||'', freq: r.fields.Freq||'biweekly' };
-}
-function _atMapEmployee(r) {
-  return {
-    id: r.id, _rid: r.id, clientCode: r.fields.ClientCode||'',
-    first: r.fields.First||'', last: r.fields.Last||'', title: r.fields.Title||'',
-    type: r.fields.Type||'FT', payType: r.fields.PayType||'hourly', rate: r.fields.Rate||0,
-    banking: !!r.fields.Banking, td1: !!r.fields.TD1, status: r.fields.Status||'active', startDate: r.fields.StartDate||''
-  };
-}
-function _atMapSubmission(r) {
-  return {
-    id: r.id, _rid: r.id, type: r.fields.SubType||'payroll', clientCode: r.fields.ClientCode||'',
-    period: r.fields.Period||'', periodStart: r.fields.PeriodStart||'', periodEnd: r.fields.PeriodEnd||'',
-    payDate: r.fields.PayDate||'', submitted: r.fields.Submitted||'',
-    empCount: r.fields.EmpCount||0, flags: r.fields.Flags||0,
-    status: r.fields.Status||'new', note: r.fields.Note||'',
-    locked: !!r.fields.Locked, lastEdited: r.fields.LastEdited||'',
-    employeeHours: r.fields.EmployeeHours ? JSON.parse(r.fields.EmployeeHours) : {},
-    empName: r.fields.EmpName||'', startDate: r.fields.StartDate||'',
-    banking: r.fields.BankingInfo||'', td1: r.fields.TD1Info||'', notes: r.fields.Notes||''
-  };
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  FIREBASE ADAPTER (Firestore REST API — no SDK required)
-// ══════════════════════════════════════════════════════════════════════════
-const _FB_BASE = () => `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.projectId}/databases/(default)/documents`;
-const _FB_KEY  = () => `?key=${FB_CONFIG.apiKey}`;
-
-// Convert JS value → Firestore field type object
-function _fbVal(v) {
-  if (v === null || v === undefined)  return { nullValue: null };
-  if (typeof v === 'boolean')         return { booleanValue: v };
-  if (typeof v === 'number')          return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
-  if (typeof v === 'string')          return { stringValue: v };
-  if (typeof v === 'object')          return { stringValue: JSON.stringify(v) };
+function fbVal(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === 'boolean')        return { booleanValue: v };
+  if (typeof v === 'number')         return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'string')         return { stringValue: v };
+  if (typeof v === 'object')         return { stringValue: JSON.stringify(v) };
   return { stringValue: String(v) };
 }
 
-// Convert JS object → Firestore fields map
-function _fbFields(obj) {
+function fbFields(obj) {
   const fields = {};
-  for (const [k, v] of Object.entries(obj)) fields[k] = _fbVal(v);
+  for (const [k, v] of Object.entries(obj)) fields[k] = fbVal(v);
   return fields;
 }
 
-// Extract a Firestore field value → JS value
-function _fbGet(field) {
+function fbGet(field) {
   if (!field) return null;
   if ('stringValue'  in field) return field.stringValue;
   if ('booleanValue' in field) return field.booleanValue;
   if ('integerValue' in field) return Number(field.integerValue);
   if ('doubleValue'  in field) return field.doubleValue;
-  if ('nullValue'    in field) return null;
   return null;
 }
 
-// Extract Firestore document → plain JS object
-function _fbExtract(doc) {
+function fbExtract(doc) {
   if (!doc || !doc.fields) return {};
   const obj = { _docName: doc.name };
-  for (const [k, v] of Object.entries(doc.fields)) obj[k] = _fbGet(v);
+  for (const [k, v] of Object.entries(doc.fields)) obj[k] = fbGet(v);
   return obj;
 }
 
-// Get document ID from full Firestore document name
-function _fbDocId(docName) {
-  return docName.split('/').pop();
-}
+function fbDocId(docName) { return docName.split('/').pop(); }
 
-async function _fbFetch(collection) {
+async function fbFetch(collection) {
   const docs = [];
   let pageToken = '';
   do {
-    let url = `${_FB_BASE()}/${collection}${_FB_KEY()}`;
+    let url = `${FB_BASE()}/${collection}${FB_KEY()}`;
     if (pageToken) url += '&pageToken=' + pageToken;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Firebase fetch error ${res.status}: ${await res.text()}`);
@@ -1633,43 +1541,39 @@ async function _fbFetch(collection) {
   return docs;
 }
 
-async function _fbCreate(collection, data) {
-  const res = await fetch(`${_FB_BASE()}/${collection}${_FB_KEY()}`, {
+async function fbCreate(collection, data) {
+  const res = await fetch(`${FB_BASE()}/${collection}${FB_KEY()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: _fbFields(data) })
+    body: JSON.stringify({ fields: fbFields(data) })
   });
   if (!res.ok) throw new Error(`Firebase create error ${res.status}: ${await res.text()}`);
   return await res.json();
 }
 
-async function _fbUpdate(collection, docId, data) {
-  // Build updateMask from keys
-  const keys = Object.keys(data);
-  const mask = keys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
-  const res = await fetch(`${_FB_BASE()}/${collection}/${docId}${_FB_KEY()}&${mask}`, {
+async function fbUpdate(collection, docId, data) {
+  const mask = Object.keys(data).map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const res = await fetch(`${FB_BASE()}/${collection}/${docId}${FB_KEY()}&${mask}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fields: _fbFields(data) })
+    body: JSON.stringify({ fields: fbFields(data) })
   });
   if (!res.ok) throw new Error(`Firebase update error ${res.status}: ${await res.text()}`);
   return await res.json();
 }
 
-async function _fbDelete(collection, docId) {
-  const res = await fetch(`${_FB_BASE()}/${collection}/${docId}${_FB_KEY()}`, { method: 'DELETE' });
+async function fbDelete(collection, docId) {
+  const res = await fetch(`${FB_BASE()}/${collection}/${docId}${FB_KEY()}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Firebase delete error ${res.status}: ${await res.text()}`);
 }
 
-// Map Firebase documents → internal objects
-function _fbMapClient(doc) {
-  const f = _fbExtract(doc);
-  const id = _fbDocId(doc.name);
+// ── Map Firestore documents → internal objects ───────────────────────────
+function mapClient(doc) {
+  const f = fbExtract(doc), id = fbDocId(doc.name);
   return { id, _rid: id, name: f.Name||'', code: f.Code||'', freq: f.Freq||'biweekly' };
 }
-function _fbMapEmployee(doc) {
-  const f = _fbExtract(doc);
-  const id = _fbDocId(doc.name);
+function mapEmployee(doc) {
+  const f = fbExtract(doc), id = fbDocId(doc.name);
   return {
     id, _rid: id, clientCode: f.ClientCode||'',
     first: f.First||'', last: f.Last||'', title: f.Title||'',
@@ -1677,9 +1581,8 @@ function _fbMapEmployee(doc) {
     banking: !!f.Banking, td1: !!f.TD1, status: f.Status||'active', startDate: f.StartDate||''
   };
 }
-function _fbMapSubmission(doc) {
-  const f = _fbExtract(doc);
-  const id = _fbDocId(doc.name);
+function mapSubmission(doc) {
+  const f = fbExtract(doc), id = fbDocId(doc.name);
   let empHours = {};
   try { empHours = f.EmployeeHours ? JSON.parse(f.EmployeeHours) : {}; } catch(e) {}
   return {
@@ -1696,55 +1599,20 @@ function _fbMapSubmission(doc) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  UNIFIED DB ADAPTER — all app code calls these, never AT/FB directly
+//  LOAD ALL DATA FROM FIREBASE
 // ══════════════════════════════════════════════════════════════════════════
-const isAirtable  = () => STORAGE_BACKEND === 'airtable';
-const isFirebase  = () => STORAGE_BACKEND === 'firebase';
-
-// Load all data — populates global db
 async function loadAllData() {
   showLoader('Loading your data...');
   try {
-    if (isAirtable()) {
-      const [cr, er, sr] = await Promise.all([_atFetch('clients'), _atFetch('employees'), _atFetch('submissions')]);
-      db.clients     = cr.map(_atMapClient);
-      db.employees   = er.map(_atMapEmployee);
-      db.submissions = sr.map(_atMapSubmission);
-    } else {
-      const [cr, er, sr] = await Promise.all([_fbFetch('clients'), _fbFetch('employees'), _fbFetch('submissions')]);
-      db.clients     = cr.map(_fbMapClient);
-      db.employees   = er.map(_fbMapEmployee);
-      db.submissions = sr.map(_fbMapSubmission);
-    }
+    const [cr, er, sr] = await Promise.all([
+      fbFetch('clients'),
+      fbFetch('employees'),
+      fbFetch('submissions')
+    ]);
+    db.clients     = cr.map(mapClient);
+    db.employees   = er.map(mapEmployee);
+    db.submissions = sr.map(mapSubmission);
   } finally { hideLoader(); }
-}
-
-// Create a record — returns internal mapped object
-async function dbCreate(collection, data) {
-  if (isAirtable()) {
-    const rec = await _atCreate(collection, data);
-    if (collection === 'clients')     return _atMapClient(rec);
-    if (collection === 'employees')   return _atMapEmployee(rec);
-    if (collection === 'submissions') return _atMapSubmission(rec);
-  } else {
-    // Firebase field names match Airtable field names (same keys)
-    const doc = await _fbCreate(collection, data);
-    if (collection === 'clients')     return _fbMapClient(doc);
-    if (collection === 'employees')   return _fbMapEmployee(doc);
-    if (collection === 'submissions') return _fbMapSubmission(doc);
-  }
-}
-
-// Update a record by its _rid
-async function dbUpdate(collection, rid, data) {
-  if (isAirtable()) return _atUpdate(collection, rid, data);
-  else              return _fbUpdate(collection, rid, data);
-}
-
-// Delete a record by its _rid
-async function dbDelete(collection, rid) {
-  if (isAirtable()) return _atDelete(collection, rid);
-  else              return _fbDelete(collection, rid);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1756,10 +1624,10 @@ let currentEmpStep  = 1;
 let empFormData     = {};
 let editingSubId    = null;
 
-function clientById(id)         { return db.clients.find(c => c.id === id); }
-function codeById(id)           { const c = clientById(id); return c ? c.code : ''; }
-function clientByCode(code)     { return db.clients.find(c => c.code === code); }
-function employeesForClient(id) { const code = codeById(id); return db.employees.filter(e => e.clientCode === code); }
+function clientById(id)           { return db.clients.find(c => c.id === id); }
+function codeById(id)             { const c = clientById(id); return c ? c.code : ''; }
+function clientByCode(code)       { return db.clients.find(c => c.code === code); }
+function employeesForClient(id)   { const code = codeById(id); return db.employees.filter(e => e.clientCode === code); }
 function submissionsForClient(id) { const code = codeById(id); return db.submissions.filter(s => s.clientCode === code); }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1792,7 +1660,7 @@ async function clientLogin() {
   try {
     await loadAllData();
   } catch(e) {
-    showToast('Could not connect to ' + (isAirtable()?'Airtable':'Firebase') + '. Check your config.', 'error', 6000);
+    showToast('Could not connect to Firebase. Check your API key and project ID.', 'error', 6000);
     console.error(e); return;
   }
   const client = clientByCode(code);
@@ -1828,7 +1696,7 @@ async function verifyAdmin() {
   try {
     await loadAllData();
   } catch(e) {
-    showToast('Could not connect to ' + (isAirtable()?'Airtable':'Firebase') + '. Check your config.', 'error', 6000);
+    showToast('Could not connect to Firebase. Check your API key and project ID.', 'error', 6000);
     console.error(e); return;
   }
   currentClientId = 'admin';
@@ -1901,10 +1769,10 @@ function editPayrollRun(subId) {
   const sub = db.submissions.find(s => s.id === subId);
   if (!sub || sub.locked) { showToast('This submission is locked and cannot be edited.', 'error'); return; }
   editingSubId = subId;
-  if (sub.periodStart) document.getElementById('pp-start').value   = sub.periodStart;
-  if (sub.periodEnd)   document.getElementById('pp-end').value     = sub.periodEnd;
-  if (sub.payDate)     document.getElementById('pp-paydate').value  = sub.payDate;
-  if (sub.notes)       document.getElementById('pp-notes').value    = sub.notes;
+  if (sub.periodStart) document.getElementById('pp-start').value  = sub.periodStart;
+  if (sub.periodEnd)   document.getElementById('pp-end').value    = sub.periodEnd;
+  if (sub.payDate)     document.getElementById('pp-paydate').value = sub.payDate;
+  if (sub.notes)       document.getElementById('pp-notes').value   = sub.notes;
   const bar = document.getElementById('edit-mode-bar');
   if (bar) bar.style.display = 'flex';
   const btn = document.getElementById('payroll-submit-btn');
@@ -1978,7 +1846,6 @@ async function submitPayrollRun() {
     showToast('Pay period end must be after start date.', 'error'); return;
   }
 
-  // Duplicate check
   const clientCode = codeById(currentClientId);
   const newStart = new Date(start), newEnd = new Date(end);
   const duplicate = db.submissions.find(s =>
@@ -1991,7 +1858,6 @@ async function submitPayrollRun() {
     return;
   }
 
-  // Collect hours
   const emps = employeesForClient(currentClientId);
   let flags = 0;
   const employeeHours = {};
@@ -2022,7 +1888,7 @@ async function submitPayrollRun() {
           Note: noteText, LastEdited: today, Notes: ppNotes, EmployeeHours: hoursJson
         };
         console.log('Updating fields:', JSON.stringify(fields));
-        await dbUpdate('submissions', sub._rid, fields);
+        await fbUpdate('submissions', sub._rid, fields);
         Object.assign(sub, {
           period:`${fmt(start)} - ${fmt(end)}`, periodStart:start, periodEnd:end,
           payDate:pay, empCount:emps.length, flags, status:'new', note:noteText,
@@ -2039,8 +1905,8 @@ async function submitPayrollRun() {
         Status: 'new', Note: noteText, Notes: ppNotes, EmployeeHours: hoursJson
       };
       console.log('Creating submission:', JSON.stringify(fields));
-      const created = await dbCreate('submissions', fields);
-      db.submissions.push(created);
+      const created = await fbCreate('submissions', fields);
+      db.submissions.push(mapSubmission(created));
       document.getElementById('success-title').textContent = 'Payroll Run Submitted!';
       document.getElementById('success-msg').textContent   = `Pay period ${fmt(start)} - ${fmt(end)} received. Your accountant will review and process within 1-2 business days.`;
     }
@@ -2112,10 +1978,10 @@ function validateStep2() {
   let ok = true;
   const inst=document.getElementById('emp-bank-inst').value, transit=document.getElementById('emp-bank-transit').value,
         acct=document.getElementById('emp-bank-acct').value, type=document.getElementById('emp-bank-type').value;
-  if (inst.length!==3)           { showErr('err-emp-bank-inst','emp-bank-inst');       ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
-  if (transit.length!==5)        { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
-  if (acct.length<7||acct.length>12){ showErr('err-emp-bank-acct','emp-bank-acct');   ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
-  if (!type)                     { showErr('err-emp-bank-type','emp-bank-type');        ok=false; } else clearErr('err-emp-bank-type','emp-bank-type');
+  if (inst.length!==3)              { showErr('err-emp-bank-inst','emp-bank-inst');       ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
+  if (transit.length!==5)           { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
+  if (acct.length<7||acct.length>12){ showErr('err-emp-bank-acct','emp-bank-acct');       ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
+  if (!type)                        { showErr('err-emp-bank-type','emp-bank-type');        ok=false; } else clearErr('err-emp-bank-type','emp-bank-type');
   if (!ok) { showToast('Please fix the banking details before continuing.', 'error'); return; }
   empFormData.banking = { inst, transit, acct: '****'+acct.slice(-3), type };
   showEmpStep(3);
@@ -2145,17 +2011,17 @@ function validateStep3() {
 function buildReview() {
   const p=empFormData.personal||{}, b=empFormData.banking||{}, r=empFormData.payroll||{};
   const items = [
-    { label:'Full Name',        value:`${p.first} ${p.last}`,                                ok:!!(p.first&&p.last) },
-    { label:'SIN',              value:p.sin?'***-***-'+p.sin.replace(/-/g,'').slice(-3):'',  ok:!!p.sin },
-    { label:'Email',            value:p.email,                                                ok:!!p.email },
-    { label:'Date of Birth',    value:p.dob,                                                  ok:!!p.dob },
-    { label:'Home Address',     value:`${p.address}, ${p.city} ${p.province} ${p.postal}`,   ok:!!(p.address&&p.city) },
+    { label:'Full Name',        value:`${p.first} ${p.last}`,                                         ok:!!(p.first&&p.last) },
+    { label:'SIN',              value:p.sin?'***-***-'+p.sin.replace(/-/g,'').slice(-3):'',            ok:!!p.sin },
+    { label:'Email',            value:p.email,                                                         ok:!!p.email },
+    { label:'Date of Birth',    value:p.dob,                                                           ok:!!p.dob },
+    { label:'Home Address',     value:`${p.address}, ${p.city} ${p.province} ${p.postal}`,            ok:!!(p.address&&p.city) },
     { label:'Banking (masked)', value:`Institution ${b.inst} - Transit ${b.transit} - Acct ${b.acct} (${b.type})`, ok:!!(b.inst&&b.transit) },
-    { label:'Start Date',       value:r.startDate,                                            ok:!!r.startDate },
-    { label:'Job Title',        value:r.title,                                                ok:!!r.title },
-    { label:'Pay',              value:`${r.payType} - $${r.rate} - ${r.freq}`,               ok:!!(r.payType&&r.rate) },
-    { label:'TD1 Federal',      value:`$${r.td1Fed}`,                                         ok:true },
-    { label:'TD1 Provincial',   value:`$${r.td1Prov}`,                                        ok:true },
+    { label:'Start Date',       value:r.startDate,                                                     ok:!!r.startDate },
+    { label:'Job Title',        value:r.title,                                                         ok:!!r.title },
+    { label:'Pay',              value:`${r.payType} - $${r.rate} - ${r.freq}`,                        ok:!!(r.payType&&r.rate) },
+    { label:'TD1 Federal',      value:`$${r.td1Fed}`,                                                  ok:true },
+    { label:'TD1 Provincial',   value:`$${r.td1Prov}`,                                                 ok:true },
   ];
   document.getElementById('review-checklist').innerHTML = `<ul class="checklist">
     ${items.map(i=>`<li class="${i.ok&&i.value?'complete':'missing'}">
@@ -2172,7 +2038,6 @@ async function submitNewEmployee() {
   const p=empFormData.personal||{}, r=empFormData.payroll||{};
   const clientCode = codeById(currentClientId);
   const today = new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
-
   showLoader('Saving employee...');
   try {
     const empData = {
@@ -2180,8 +2045,8 @@ async function submitNewEmployee() {
       Type: r.type, PayType: r.payType, Rate: r.rate, Banking: true, TD1: true,
       Status: 'active', StartDate: r.startDate
     };
-    const newEmp = await dbCreate('employees', empData);
-    db.employees.push(newEmp);
+    const newEmpDoc = await fbCreate('employees', empData);
+    db.employees.push(mapEmployee(newEmpDoc));
 
     const subData = {
       SubType: 'employee', ClientCode: clientCode,
@@ -2189,10 +2054,10 @@ async function submitNewEmployee() {
       BankingInfo: 'Provided', TD1Info: 'Provided',
       Submitted: today, Status: 'new', Note: r.notes || ''
     };
-    const newSub = await dbCreate('submissions', subData);
-    db.submissions.push(newSub);
+    const newSubDoc = await fbCreate('submissions', subData);
+    db.submissions.push(mapSubmission(newSubDoc));
   } catch(e) {
-    showToast('Save failed - check your connection.', 'error', 5000);
+    showToast('Save failed - check your Firebase connection.', 'error', 5000);
     console.error(e); return;
   } finally { hideLoader(); }
 
@@ -2277,7 +2142,6 @@ function loadAdminDashboard() {
     <div class="stat-card accent-teal"><div class="stat-label">New Employees</div><div class="stat-value">${newEmps.length}</div><div class="stat-sub">Onboarding submissions</div></div>
     <div class="stat-card accent-red"><div class="stat-label">OT Flags</div><div class="stat-value">${flags.length}</div><div class="stat-sub">Overtime alerts to verify</div></div>`;
 
-  // Payroll tab
   const ptbody = document.getElementById('admin-payroll-tbody');
   ptbody.innerHTML = '';
   if (!payrolls.length) {
@@ -2306,7 +2170,6 @@ function loadAdminDashboard() {
     });
   }
 
-  // Employees tab
   const etbody = document.getElementById('admin-emp-tbody');
   etbody.innerHTML = '';
   if (!newEmps.length) {
@@ -2327,7 +2190,6 @@ function loadAdminDashboard() {
     });
   }
 
-  // Clients tab
   const ctbody = document.getElementById('admin-clients-tbody');
   ctbody.innerHTML = '';
   db.clients.forEach(c => {
@@ -2355,7 +2217,7 @@ async function markDone(subId) {
   if (!s) return;
   showLoader('Updating...');
   try {
-    await dbUpdate('submissions', s._rid, { Status: 'done', Note: 'Processed' });
+    await fbUpdate('submissions', s._rid, { Status: 'done', Note: 'Processed' });
     s.status='done'; s.note='Processed';
     loadAdminDashboard(); showToast('Marked as done!', 'success');
   } catch(e) { showToast('Update failed.', 'error'); console.error(e); }
@@ -2366,13 +2228,10 @@ async function lockSubmission(subId) {
   const s = db.submissions.find(x=>x.id===subId);
   if (!s) return;
   const willLock = !s.locked;
-  const msg = willLock
-    ? 'Lock this submission? The client will no longer be able to edit it.'
-    : 'Unlock this submission? The client will be able to edit it again.';
-  if (!confirm(msg)) return;
+  if (!confirm(willLock ? 'Lock this submission? The client will no longer be able to edit it.' : 'Unlock this submission? The client will be able to edit it again.')) return;
   showLoader(willLock ? 'Locking...' : 'Unlocking...');
   try {
-    await dbUpdate('submissions', s._rid, { Locked: willLock });
+    await fbUpdate('submissions', s._rid, { Locked: willLock });
     s.locked = willLock;
     loadAdminDashboard();
     showToast(willLock ? 'Submission locked.' : 'Submission unlocked - client can edit again.', 'success');
@@ -2452,8 +2311,8 @@ async function addClient() {
   if (db.clients.find(c=>c.code===code)) { showToast('That access code is already in use.', 'error'); return; }
   showLoader('Adding client...');
   try {
-    const created = await dbCreate('clients', { Name: name, Code: code, Freq: freq });
-    db.clients.push(created);
+    const doc = await fbCreate('clients', { Name: name, Code: code, Freq: freq });
+    db.clients.push(mapClient(doc));
     document.getElementById('new-client-name').value='';
     document.getElementById('new-client-code').value='';
     const msg = document.getElementById('add-client-msg');
@@ -2474,16 +2333,16 @@ async function changeClientCode(clientId) {
   if (!confirm('Change access code for ' + c.name + ' from ' + c.code + ' to ' + newCode + '?')) return;
   showLoader('Updating code...');
   try {
-    await dbUpdate('clients', c._rid, { Code: newCode });
+    await fbUpdate('clients', c._rid, { Code: newCode });
     const oldCode = c.code;
     c.code = newCode;
     const empUpdates = db.employees.filter(e=>e.clientCode===oldCode).map(e => {
       e.clientCode = newCode;
-      return dbUpdate('employees', e._rid, { ClientCode: newCode });
+      return fbUpdate('employees', e._rid, { ClientCode: newCode });
     });
     const subUpdates = db.submissions.filter(s=>s.clientCode===oldCode).map(s => {
       s.clientCode = newCode;
-      return dbUpdate('submissions', s._rid, { ClientCode: newCode });
+      return fbUpdate('submissions', s._rid, { ClientCode: newCode });
     });
     await Promise.all([...empUpdates, ...subUpdates]);
     if (input) input.value = '';
@@ -2501,9 +2360,9 @@ async function removeClient(id) {
     const empsToRemove = db.employees.filter(e=>e.clientCode===c.code);
     const subsToRemove = db.submissions.filter(s=>s.clientCode===c.code);
     await Promise.all([
-      dbDelete('clients', c._rid),
-      ...empsToRemove.map(e=>dbDelete('employees', e._rid)),
-      ...subsToRemove.map(s=>dbDelete('submissions', s._rid))
+      fbDelete('clients', c._rid),
+      ...empsToRemove.map(e=>fbDelete('employees', e._rid)),
+      ...subsToRemove.map(s=>fbDelete('submissions', s._rid))
     ]);
     db.clients     = db.clients.filter(x=>x.id!==id);
     db.employees   = db.employees.filter(e=>e.clientCode!==c.code);
