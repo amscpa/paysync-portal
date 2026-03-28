@@ -1449,159 +1449,49 @@ code {
 </div>
 <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 
+
 <script>
 // ══════════════════════════════════════════════════════════════════════════
-//  ⚙️  AIRTABLE CONFIG  — fill these in before deploying
-//  1. Go to airtable.com → your base → Help → API docs to find BASE_ID
-//  2. Go to airtable.com/create/tokens → create a token with:
-//       Scopes: data.records:read, data.records:write
-//       Access: your PaySync base only
-//  3. Paste both values below
-//
-//  TABLE NAMES — create exactly these tables in your Airtable base:
-//    • Clients     fields: Name, Code, Freq
-//    • Employees   fields: ClientCode, First, Last, Title, Type, PayType,
-//                          Rate, Banking, TD1, Status, StartDate
-//    • Submissions fields: SubType, ClientCode, Period, PeriodStart,
-//                          PeriodEnd, PayDate, Submitted, EmpCount, Flags,
-//                          Status, Note, Locked, LastEdited, EmployeeHours,
-//                          EmpName, BankingInfo, TD1Info, Notes
+//  ⚙️  STORAGE BACKEND — set to 'airtable' or 'firebase'
 // ══════════════════════════════════════════════════════════════════════════
-const AT_TOKEN   = 'patcg6xzIhPYGWsXq.49ded005456e5e5785729e3342d8e59619289a3fb2a73730b69ab4b0e9b749d9';
-const AT_BASE_ID = 'app6j7ViFD8Yl6WQy';
+const STORAGE_BACKEND = 'airtable';   // ← change to 'firebase' to use Firebase
+
+// ══════════════════════════════════════════════════════════════════════════
+//  ⚙️  AIRTABLE CONFIG (used when STORAGE_BACKEND = 'airtable')
+//  1. Base ID: open your base → URL bar → copy the app... part
+//  2. Token: airtable.com/create/tokens → scopes: records:read + records:write
+//  Tables needed: Clients, Employees, Submissions (see documentation)
+// ══════════════════════════════════════════════════════════════════════════
+const AT_TOKEN   = 'YOUR_AIRTABLE_TOKEN_HERE';
+const AT_BASE_ID = 'YOUR_BASE_ID_HERE';
 const AT_TABLES  = { clients: 'Clients', employees: 'Employees', submissions: 'Submissions' };
 
-const ADMIN_PIN  = '1234';
-
+// ══════════════════════════════════════════════════════════════════════════
+//  ⚙️  FIREBASE CONFIG (used when STORAGE_BACKEND = 'firebase')
+//  1. Go to console.firebase.google.com → create project → add web app
+//  2. Copy the config object values below
+//  3. In Firestore → Rules → set allow read, write: if true (for now)
+//  Collections created automatically: clients, employees, submissions
+// ══════════════════════════════════════════════════════════════════════════
+const FB_CONFIG = {
+  apiKey:    'AIzaSyDr22C7ZTp39f0qPUeD7s5iuRCTPsRlTf0',
+  projectId: 'paysync-78723',
+};
 
 // ══════════════════════════════════════════════════════════════════════════
-//  AIRTABLE API HELPERS
+//  ⚙️  ADMIN PIN
 // ══════════════════════════════════════════════════════════════════════════
-const AT_URL = (table) => `https://api.airtable.com/v0/${AT_BASE_ID}/${encodeURIComponent(AT_TABLES[table])}`;
-const AT_HEADERS = () => ({ 'Authorization': `Bearer ${AT_TOKEN}`, 'Content-Type': 'application/json' });
+const ADMIN_PIN = '1234';
 
+// ══════════════════════════════════════════════════════════════════════════
+//  UI HELPERS
+// ══════════════════════════════════════════════════════════════════════════
 function showLoader(msg = 'Loading...') {
-  const ol = document.getElementById('loading-overlay');
   document.getElementById('loading-msg').textContent = msg;
-  ol.style.display = 'flex';
+  document.getElementById('loading-overlay').style.display = 'flex';
 }
 function hideLoader() { document.getElementById('loading-overlay').style.display = 'none'; }
 
-async function atFetch(tableKey, filterFormula = '') {
-  let url = AT_URL(tableKey) + '?pageSize=100';
-  if (filterFormula) url += '&filterByFormula=' + encodeURIComponent(filterFormula);
-  const rows = [];
-  let offset = '';
-  do {
-    const res = await fetch(offset ? url + '&offset=' + offset : url, { headers: AT_HEADERS() });
-    if (!res.ok) throw new Error(`Airtable fetch error ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    rows.push(...data.records);
-    offset = data.offset || '';
-  } while (offset);
-  return rows;
-}
-
-async function atCreate(tableKey, fields) {
-  const res = await fetch(AT_URL(tableKey), {
-    method: 'POST', headers: AT_HEADERS(),
-    body: JSON.stringify({ records: [{ fields }] })
-  });
-  if (!res.ok) throw new Error(`Airtable create error ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  return data.records[0];
-}
-
-async function atUpdate(tableKey, recordId, fields) {
-  const res = await fetch(AT_URL(tableKey) + '/' + recordId, {
-    method: 'PATCH', headers: AT_HEADERS(),
-    body: JSON.stringify({ fields })
-  });
-  if (!res.ok) throw new Error(`Airtable update error ${res.status}: ${await res.text()}`);
-  return (await res.json());
-}
-
-async function atDelete(tableKey, recordId) {
-  const res = await fetch(AT_URL(tableKey) + '/' + recordId, { method: 'DELETE', headers: AT_HEADERS() });
-  if (!res.ok) throw new Error(`Airtable delete error ${res.status}: ${await res.text()}`);
-}
-
-// ── Map Airtable records → internal objects ──────────────────────────────
-function mapClient(r) {
-  return { id: r.id, _rid: r.id, name: r.fields.Name || '', code: r.fields.Code || '', freq: r.fields.Freq || 'biweekly' };
-}
-function mapEmployee(r) {
-  return {
-    id: r.id, _rid: r.id,
-    clientCode: r.fields.ClientCode || '',
-    first: r.fields.First || '', last: r.fields.Last || '',
-    title: r.fields.Title || '', type: r.fields.Type || 'FT',
-    payType: r.fields.PayType || 'hourly', rate: r.fields.Rate || 0,
-    banking: !!r.fields.Banking, td1: !!r.fields.TD1,
-    status: r.fields.Status || 'active', startDate: r.fields.StartDate || ''
-  };
-}
-function mapSubmission(r) {
-  return {
-    id: r.id, _rid: r.id,
-    type: r.fields.SubType || 'payroll',
-    clientCode: r.fields.ClientCode || '',
-    period: r.fields.Period || '', periodStart: r.fields.PeriodStart || '',
-    periodEnd: r.fields.PeriodEnd || '', payDate: r.fields.PayDate || '',
-    submitted: r.fields.Submitted || '',
-    empCount: r.fields.EmpCount || 0, flags: r.fields.Flags || 0,
-    status: r.fields.Status || 'new', note: r.fields.Note || '',
-    locked: !!r.fields.Locked, lastEdited: r.fields.LastEdited || '',
-    employeeHours: r.fields.EmployeeHours ? JSON.parse(r.fields.EmployeeHours) : {},
-    empName: r.fields.EmpName || '', startDate: r.fields.StartDate || '',
-    banking: r.fields.BankingInfo || '', td1: r.fields.TD1Info || '',
-    notes: r.fields.Notes || ''
-  };
-}
-
-// ── In-memory db (populated on login) ───────────────────────────────────
-let db = { clients: [], employees: [], submissions: [] };
-let currentClientId = null;   // client: Airtable record id; admin: 'admin'
-let currentEmpStep  = 1;
-let empFormData     = {};
-let editingSubId    = null;
-
-// ── Helper: find client by id ────────────────────────────────────────────
-function clientById(id) { return db.clients.find(c => c.id === id); }
-// employees and submissions reference clientCode, so we need code lookup
-function codeById(id) { const c = clientById(id); return c ? c.code : ''; }
-function clientByCode(code) { return db.clients.find(c => c.code === code); }
-function employeesForClient(clientId) {
-  const code = codeById(clientId);
-  return db.employees.filter(e => e.clientCode === code);
-}
-function submissionsForClient(clientId) {
-  const code = codeById(clientId);
-  return db.submissions.filter(s => s.clientCode === code);
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  LOAD DATA FROM AIRTABLE
-// ══════════════════════════════════════════════════════════════════════════
-async function loadAllData() {
-  showLoader('Loading your data…');
-  try {
-    const [clientRecs, empRecs, subRecs] = await Promise.all([
-      atFetch('clients'),
-      atFetch('employees'),
-      atFetch('submissions')
-    ]);
-    db.clients     = clientRecs.map(mapClient);
-    db.employees   = empRecs.map(mapEmployee);
-    db.submissions = subRecs.map(mapSubmission);
-  } finally {
-    hideLoader();
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-//  TOAST
-// ══════════════════════════════════════════════════════════════════════════
 function showToast(msg, type = 'info', duration = 3500) {
   const tc = document.getElementById('toast-container');
   const toast = document.createElement('div');
@@ -1611,6 +1501,266 @@ function showToast(msg, type = 'info', duration = 3500) {
   tc.appendChild(toast);
   setTimeout(() => { toast.style.animation = 'toastOut .3s forwards'; setTimeout(() => toast.remove(), 300); }, duration);
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+//  AIRTABLE ADAPTER
+// ══════════════════════════════════════════════════════════════════════════
+const _AT_URL     = t => `https://api.airtable.com/v0/${AT_BASE_ID}/${encodeURIComponent(AT_TABLES[t])}`;
+const _AT_HEADERS = () => ({ 'Authorization': `Bearer ${AT_TOKEN}`, 'Content-Type': 'application/json' });
+
+async function _atFetch(tableKey) {
+  let url = _AT_URL(tableKey) + '?pageSize=100';
+  const rows = [];
+  let offset = '';
+  do {
+    const res = await fetch(offset ? url + '&offset=' + offset : url, { headers: _AT_HEADERS() });
+    if (!res.ok) throw new Error(`Airtable fetch error ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    rows.push(...data.records);
+    offset = data.offset || '';
+  } while (offset);
+  return rows;
+}
+
+async function _atCreate(tableKey, fields) {
+  const res = await fetch(_AT_URL(tableKey), {
+    method: 'POST', headers: _AT_HEADERS(),
+    body: JSON.stringify({ records: [{ fields }] })
+  });
+  if (!res.ok) throw new Error(`Airtable create error ${res.status}: ${await res.text()}`);
+  return (await res.json()).records[0];
+}
+
+async function _atUpdate(tableKey, recordId, fields) {
+  const res = await fetch(_AT_URL(tableKey) + '/' + recordId, {
+    method: 'PATCH', headers: _AT_HEADERS(),
+    body: JSON.stringify({ fields })
+  });
+  if (!res.ok) throw new Error(`Airtable update error ${res.status}: ${await res.text()}`);
+  return (await res.json());
+}
+
+async function _atDelete(tableKey, recordId) {
+  const res = await fetch(_AT_URL(tableKey) + '/' + recordId, { method: 'DELETE', headers: _AT_HEADERS() });
+  if (!res.ok) throw new Error(`Airtable delete error ${res.status}: ${await res.text()}`);
+}
+
+// Map Airtable records → internal objects
+function _atMapClient(r) {
+  return { id: r.id, _rid: r.id, name: r.fields.Name||'', code: r.fields.Code||'', freq: r.fields.Freq||'biweekly' };
+}
+function _atMapEmployee(r) {
+  return {
+    id: r.id, _rid: r.id, clientCode: r.fields.ClientCode||'',
+    first: r.fields.First||'', last: r.fields.Last||'', title: r.fields.Title||'',
+    type: r.fields.Type||'FT', payType: r.fields.PayType||'hourly', rate: r.fields.Rate||0,
+    banking: !!r.fields.Banking, td1: !!r.fields.TD1, status: r.fields.Status||'active', startDate: r.fields.StartDate||''
+  };
+}
+function _atMapSubmission(r) {
+  return {
+    id: r.id, _rid: r.id, type: r.fields.SubType||'payroll', clientCode: r.fields.ClientCode||'',
+    period: r.fields.Period||'', periodStart: r.fields.PeriodStart||'', periodEnd: r.fields.PeriodEnd||'',
+    payDate: r.fields.PayDate||'', submitted: r.fields.Submitted||'',
+    empCount: r.fields.EmpCount||0, flags: r.fields.Flags||0,
+    status: r.fields.Status||'new', note: r.fields.Note||'',
+    locked: !!r.fields.Locked, lastEdited: r.fields.LastEdited||'',
+    employeeHours: r.fields.EmployeeHours ? JSON.parse(r.fields.EmployeeHours) : {},
+    empName: r.fields.EmpName||'', startDate: r.fields.StartDate||'',
+    banking: r.fields.BankingInfo||'', td1: r.fields.TD1Info||'', notes: r.fields.Notes||''
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  FIREBASE ADAPTER (Firestore REST API — no SDK required)
+// ══════════════════════════════════════════════════════════════════════════
+const _FB_BASE = () => `https://firestore.googleapis.com/v1/projects/${FB_CONFIG.projectId}/databases/(default)/documents`;
+const _FB_KEY  = () => `?key=${FB_CONFIG.apiKey}`;
+
+// Convert JS value → Firestore field type object
+function _fbVal(v) {
+  if (v === null || v === undefined)  return { nullValue: null };
+  if (typeof v === 'boolean')         return { booleanValue: v };
+  if (typeof v === 'number')          return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'string')          return { stringValue: v };
+  if (typeof v === 'object')          return { stringValue: JSON.stringify(v) };
+  return { stringValue: String(v) };
+}
+
+// Convert JS object → Firestore fields map
+function _fbFields(obj) {
+  const fields = {};
+  for (const [k, v] of Object.entries(obj)) fields[k] = _fbVal(v);
+  return fields;
+}
+
+// Extract a Firestore field value → JS value
+function _fbGet(field) {
+  if (!field) return null;
+  if ('stringValue'  in field) return field.stringValue;
+  if ('booleanValue' in field) return field.booleanValue;
+  if ('integerValue' in field) return Number(field.integerValue);
+  if ('doubleValue'  in field) return field.doubleValue;
+  if ('nullValue'    in field) return null;
+  return null;
+}
+
+// Extract Firestore document → plain JS object
+function _fbExtract(doc) {
+  if (!doc || !doc.fields) return {};
+  const obj = { _docName: doc.name };
+  for (const [k, v] of Object.entries(doc.fields)) obj[k] = _fbGet(v);
+  return obj;
+}
+
+// Get document ID from full Firestore document name
+function _fbDocId(docName) {
+  return docName.split('/').pop();
+}
+
+async function _fbFetch(collection) {
+  const docs = [];
+  let pageToken = '';
+  do {
+    let url = `${_FB_BASE()}/${collection}${_FB_KEY()}`;
+    if (pageToken) url += '&pageToken=' + pageToken;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Firebase fetch error ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    if (data.documents) docs.push(...data.documents);
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return docs;
+}
+
+async function _fbCreate(collection, data) {
+  const res = await fetch(`${_FB_BASE()}/${collection}${_FB_KEY()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: _fbFields(data) })
+  });
+  if (!res.ok) throw new Error(`Firebase create error ${res.status}: ${await res.text()}`);
+  return await res.json();
+}
+
+async function _fbUpdate(collection, docId, data) {
+  // Build updateMask from keys
+  const keys = Object.keys(data);
+  const mask = keys.map(k => `updateMask.fieldPaths=${encodeURIComponent(k)}`).join('&');
+  const res = await fetch(`${_FB_BASE()}/${collection}/${docId}${_FB_KEY()}&${mask}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: _fbFields(data) })
+  });
+  if (!res.ok) throw new Error(`Firebase update error ${res.status}: ${await res.text()}`);
+  return await res.json();
+}
+
+async function _fbDelete(collection, docId) {
+  const res = await fetch(`${_FB_BASE()}/${collection}/${docId}${_FB_KEY()}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Firebase delete error ${res.status}: ${await res.text()}`);
+}
+
+// Map Firebase documents → internal objects
+function _fbMapClient(doc) {
+  const f = _fbExtract(doc);
+  const id = _fbDocId(doc.name);
+  return { id, _rid: id, name: f.Name||'', code: f.Code||'', freq: f.Freq||'biweekly' };
+}
+function _fbMapEmployee(doc) {
+  const f = _fbExtract(doc);
+  const id = _fbDocId(doc.name);
+  return {
+    id, _rid: id, clientCode: f.ClientCode||'',
+    first: f.First||'', last: f.Last||'', title: f.Title||'',
+    type: f.Type||'FT', payType: f.PayType||'hourly', rate: f.Rate||0,
+    banking: !!f.Banking, td1: !!f.TD1, status: f.Status||'active', startDate: f.StartDate||''
+  };
+}
+function _fbMapSubmission(doc) {
+  const f = _fbExtract(doc);
+  const id = _fbDocId(doc.name);
+  let empHours = {};
+  try { empHours = f.EmployeeHours ? JSON.parse(f.EmployeeHours) : {}; } catch(e) {}
+  return {
+    id, _rid: id, type: f.SubType||'payroll', clientCode: f.ClientCode||'',
+    period: f.Period||'', periodStart: f.PeriodStart||'', periodEnd: f.PeriodEnd||'',
+    payDate: f.PayDate||'', submitted: f.Submitted||'',
+    empCount: f.EmpCount||0, flags: f.Flags||0,
+    status: f.Status||'new', note: f.Note||'',
+    locked: !!f.Locked, lastEdited: f.LastEdited||'',
+    employeeHours: empHours,
+    empName: f.EmpName||'', startDate: f.StartDate||'',
+    banking: f.BankingInfo||'', td1: f.TD1Info||'', notes: f.Notes||''
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  UNIFIED DB ADAPTER — all app code calls these, never AT/FB directly
+// ══════════════════════════════════════════════════════════════════════════
+const isAirtable  = () => STORAGE_BACKEND === 'airtable';
+const isFirebase  = () => STORAGE_BACKEND === 'firebase';
+
+// Load all data — populates global db
+async function loadAllData() {
+  showLoader('Loading your data...');
+  try {
+    if (isAirtable()) {
+      const [cr, er, sr] = await Promise.all([_atFetch('clients'), _atFetch('employees'), _atFetch('submissions')]);
+      db.clients     = cr.map(_atMapClient);
+      db.employees   = er.map(_atMapEmployee);
+      db.submissions = sr.map(_atMapSubmission);
+    } else {
+      const [cr, er, sr] = await Promise.all([_fbFetch('clients'), _fbFetch('employees'), _fbFetch('submissions')]);
+      db.clients     = cr.map(_fbMapClient);
+      db.employees   = er.map(_fbMapEmployee);
+      db.submissions = sr.map(_fbMapSubmission);
+    }
+  } finally { hideLoader(); }
+}
+
+// Create a record — returns internal mapped object
+async function dbCreate(collection, data) {
+  if (isAirtable()) {
+    const rec = await _atCreate(collection, data);
+    if (collection === 'clients')     return _atMapClient(rec);
+    if (collection === 'employees')   return _atMapEmployee(rec);
+    if (collection === 'submissions') return _atMapSubmission(rec);
+  } else {
+    // Firebase field names match Airtable field names (same keys)
+    const doc = await _fbCreate(collection, data);
+    if (collection === 'clients')     return _fbMapClient(doc);
+    if (collection === 'employees')   return _fbMapEmployee(doc);
+    if (collection === 'submissions') return _fbMapSubmission(doc);
+  }
+}
+
+// Update a record by its _rid
+async function dbUpdate(collection, rid, data) {
+  if (isAirtable()) return _atUpdate(collection, rid, data);
+  else              return _fbUpdate(collection, rid, data);
+}
+
+// Delete a record by its _rid
+async function dbDelete(collection, rid) {
+  if (isAirtable()) return _atDelete(collection, rid);
+  else              return _fbDelete(collection, rid);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  IN-MEMORY DATA STORE
+// ══════════════════════════════════════════════════════════════════════════
+let db = { clients: [], employees: [], submissions: [] };
+let currentClientId = null;
+let currentEmpStep  = 1;
+let empFormData     = {};
+let editingSubId    = null;
+
+function clientById(id)         { return db.clients.find(c => c.id === id); }
+function codeById(id)           { const c = clientById(id); return c ? c.code : ''; }
+function clientByCode(code)     { return db.clients.find(c => c.code === code); }
+function employeesForClient(id) { const code = codeById(id); return db.employees.filter(e => e.clientCode === code); }
+function submissionsForClient(id) { const code = codeById(id); return db.submissions.filter(s => s.clientCode === code); }
 
 // ══════════════════════════════════════════════════════════════════════════
 //  NAVIGATION
@@ -1641,10 +1791,9 @@ async function clientLogin() {
   }
   try {
     await loadAllData();
-  } catch (e) {
-    showToast('Could not connect to Airtable. Check your token and base ID.', 'error', 6000);
-    console.error(e);
-    return;
+  } catch(e) {
+    showToast('Could not connect to ' + (isAirtable()?'Airtable':'Firebase') + '. Check your config.', 'error', 6000);
+    console.error(e); return;
   }
   const client = clientByCode(code);
   if (!client) {
@@ -1660,7 +1809,7 @@ async function clientLogin() {
   document.getElementById('login-error').classList.remove('show');
   document.getElementById('login-code').classList.remove('error');
   currentClientId = client.id;
-  showToast(`Welcome back, ${client.name.split(' ')[0]}!`, 'success');
+  showToast('Welcome back, ' + client.name.split(' ')[0] + '!', 'success');
   showPage('pg-client-home');
 }
 
@@ -1678,10 +1827,9 @@ async function verifyAdmin() {
   }
   try {
     await loadAllData();
-  } catch (e) {
-    showToast('Could not connect to Airtable. Check your token and base ID.', 'error', 6000);
-    console.error(e);
-    return;
+  } catch(e) {
+    showToast('Could not connect to ' + (isAirtable()?'Airtable':'Firebase') + '. Check your config.', 'error', 6000);
+    console.error(e); return;
   }
   currentClientId = 'admin';
   showPage('pg-admin');
@@ -1730,8 +1878,8 @@ function validateDates() {
   if (start && end) {
     const days = Math.round((new Date(end) - new Date(start)) / 86400000);
     if (new Date(end) < new Date(start)) { warn.style.display='flex'; warnText.textContent='Pay period end date must be after start date.'; }
-    else if (days > 31)                  { warn.style.display='flex'; warnText.textContent=`This pay period spans ${days} days — double-check that this is correct.`; }
-    else                                 { warn.style.display='none'; }
+    else if (days > 31) { warn.style.display='flex'; warnText.textContent=`This pay period spans ${days} days - double-check that this is correct.`; }
+    else { warn.style.display='none'; }
   }
 }
 
@@ -1744,7 +1892,7 @@ function resetPayrollForm() {
   const bar = document.getElementById('edit-mode-bar');
   if (bar) bar.style.display = 'none';
   const btn = document.getElementById('payroll-submit-btn');
-  if (btn) btn.innerHTML = '✓&nbsp; Submit Payroll Run';
+  if (btn) btn.innerHTML = '&#10003;&nbsp; Submit Payroll Run';
 }
 
 function cancelEdit() { editingSubId = null; showPage('pg-client-home'); }
@@ -1760,7 +1908,7 @@ function editPayrollRun(subId) {
   const bar = document.getElementById('edit-mode-bar');
   if (bar) bar.style.display = 'flex';
   const btn = document.getElementById('payroll-submit-btn');
-  if (btn) btn.innerHTML = '✓&nbsp; Update Submission';
+  if (btn) btn.innerHTML = '&#10003;&nbsp; Update Submission';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('pg-payroll-run').classList.add('active');
   loadClientHome();
@@ -1773,7 +1921,7 @@ function loadPayrollRun(savedHours = {}) {
   const tbody = document.getElementById('hours-tbody');
   tbody.innerHTML = '';
   if (!emps.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">👥</div><h4>No employees found</h4><p>Add employees first before submitting a payroll run.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">&#128101;</div><h4>No employees found</h4><p>Add employees first before submitting a payroll run.</p></div></td></tr>`;
     return;
   }
   emps.forEach(e => {
@@ -1788,9 +1936,9 @@ function loadPayrollRun(savedHours = {}) {
       <td style="text-align:center"><input type="checkbox" id="hrs-stat-${e.id}" style="width:auto;cursor:pointer" ${h.stat?'checked':''}></td>
       <td><input type="number" id="hrs-other-${e.id}" min="0" step="0.01" placeholder="0.00" value="${h.other||''}"></td>
       <td id="hrs-status-${e.id}">
-        ${h.reg>44 ? '<span class="status-badge status-review"><span class="status-dot"></span>OT Flag</span>'
-        : h.reg>0  ? '<span class="status-badge status-done"><span class="status-dot"></span>Entered</span>'
-        : '<span class="status-badge status-new"><span class="status-dot"></span>Pending</span>'}
+        ${h.reg>44?'<span class="status-badge status-review"><span class="status-dot"></span>OT Flag</span>'
+        :h.reg>0 ?'<span class="status-badge status-done"><span class="status-dot"></span>Entered</span>'
+        :'<span class="status-badge status-new"><span class="status-dot"></span>Pending</span>'}
       </td>`;
     tbody.appendChild(row);
   });
@@ -1800,18 +1948,18 @@ function checkHours(empId) {
   const reg = parseFloat(document.getElementById(`hrs-reg-${empId}`)?.value) || 0;
   const input = document.getElementById(`hrs-reg-${empId}`);
   const statusCell = document.getElementById(`hrs-status-${empId}`);
-  if (reg > 44)    { input.classList.add('warn');    if(statusCell) statusCell.innerHTML = '<span class="status-badge status-review"><span class="status-dot"></span>OT Flag</span>'; }
-  else if (reg > 0){ input.classList.remove('warn'); if(statusCell) statusCell.innerHTML = '<span class="status-badge status-done"><span class="status-dot"></span>Entered</span>'; }
-  else             { input.classList.remove('warn'); if(statusCell) statusCell.innerHTML = '<span class="status-badge status-new"><span class="status-dot"></span>Pending</span>'; }
+  if (reg > 44)    { input.classList.add('warn');    if(statusCell) statusCell.innerHTML='<span class="status-badge status-review"><span class="status-dot"></span>OT Flag</span>'; }
+  else if (reg > 0){ input.classList.remove('warn'); if(statusCell) statusCell.innerHTML='<span class="status-badge status-done"><span class="status-dot"></span>Entered</span>'; }
+  else             { input.classList.remove('warn'); if(statusCell) statusCell.innerHTML='<span class="status-badge status-new"><span class="status-dot"></span>Pending</span>'; }
   const warnings = [];
   employeesForClient(currentClientId).forEach(e => {
     const r = parseFloat(document.getElementById(`hrs-reg-${e.id}`)?.value) || 0;
-    if (r > 44) warnings.push(`${e.first} ${e.last}: ${r} hrs — verify overtime eligibility (AB 44 hr threshold).`);
+    if (r > 44) warnings.push(`${e.first} ${e.last}: ${r} hrs - verify overtime eligibility (AB 44 hr threshold).`);
   });
   const warnDiv = document.getElementById('hours-warnings');
   const warnText = document.getElementById('hours-warnings-text');
   if (warnings.length) { warnDiv.style.display='flex'; warnText.innerHTML=warnings.join('<br>'); }
-  else                 { warnDiv.style.display='none'; }
+  else { warnDiv.style.display='none'; }
 }
 
 async function submitPayrollRun() {
@@ -1830,7 +1978,7 @@ async function submitPayrollRun() {
     showToast('Pay period end must be after start date.', 'error'); return;
   }
 
-  // ── DUPLICATE CHECK ──
+  // Duplicate check
   const clientCode = codeById(currentClientId);
   const newStart = new Date(start), newEnd = new Date(end);
   const duplicate = db.submissions.find(s =>
@@ -1859,62 +2007,42 @@ async function submitPayrollRun() {
 
   const fmt = d => { if(!d) return ''; const [y,m,dy]=d.split('-'); return `${m}/${dy}/${y}`; };
   const today = new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
-  const noteText = flags ? `${flags} OT flag(s) — verify` : '';
+  const noteText = flags ? `${flags} OT flag(s) - verify` : '';
+  const hoursJson = JSON.stringify(employeeHours);
+  const ppNotes   = document.getElementById('pp-notes').value || '';
 
-  showLoader(editingSubId ? 'Updating submission…' : 'Submitting payroll run…');
+  showLoader(editingSubId ? 'Updating submission...' : 'Submitting payroll run...');
   try {
-    const hoursJson = JSON.stringify(employeeHours);
-    const ppNotes   = document.getElementById('pp-notes').value || '';
-
     if (editingSubId) {
       const sub = db.submissions.find(s => s.id === editingSubId);
       if (sub) {
         const fields = {
-          Period:        `${fmt(start)} – ${fmt(end)}`,
-          PeriodStart:   start,
-          PeriodEnd:     end,
-          PayDate:       pay,
-          EmpCount:      emps.length,
-          Flags:         flags,
-          Status:        'new',
-          Note:          noteText,
-          LastEdited:    today,
-          Notes:         ppNotes,
-          EmployeeHours: hoursJson
+          Period: `${fmt(start)} - ${fmt(end)}`, PeriodStart: start, PeriodEnd: end,
+          PayDate: pay, EmpCount: emps.length, Flags: flags, Status: 'new',
+          Note: noteText, LastEdited: today, Notes: ppNotes, EmployeeHours: hoursJson
         };
         console.log('Updating fields:', JSON.stringify(fields));
-        const result = await atUpdate('submissions', sub._rid, fields);
-        console.log('Update result:', JSON.stringify(result));
+        await dbUpdate('submissions', sub._rid, fields);
         Object.assign(sub, {
-          period:`${fmt(start)} – ${fmt(end)}`, periodStart:start, periodEnd:end,
+          period:`${fmt(start)} - ${fmt(end)}`, periodStart:start, periodEnd:end,
           payDate:pay, empCount:emps.length, flags, status:'new', note:noteText,
           lastEdited:today, employeeHours, notes:ppNotes
         });
       }
       document.getElementById('success-title').textContent = 'Submission Updated!';
-      document.getElementById('success-msg').textContent   = `Your payroll run for ${fmt(start)} – ${fmt(end)} has been updated. Your accountant will review the changes.`;
+      document.getElementById('success-msg').textContent   = `Your payroll run for ${fmt(start)} - ${fmt(end)} has been updated. Your accountant will review the changes.`;
     } else {
       const fields = {
-        SubType:       'payroll',
-        ClientCode:    clientCode,
-        Period:        `${fmt(start)} – ${fmt(end)}`,
-        PeriodStart:   start,
-        PeriodEnd:     end,
-        PayDate:       pay,
-        Submitted:     today,
-        EmpCount:      emps.length,
-        Flags:         flags,
-        Status:        'new',
-        Note:          noteText,
-        Notes:         ppNotes,
-        EmployeeHours: hoursJson
+        SubType: 'payroll', ClientCode: clientCode,
+        Period: `${fmt(start)} - ${fmt(end)}`, PeriodStart: start, PeriodEnd: end,
+        PayDate: pay, Submitted: today, EmpCount: emps.length, Flags: flags,
+        Status: 'new', Note: noteText, Notes: ppNotes, EmployeeHours: hoursJson
       };
-      console.log('Creating submission with fields:', JSON.stringify(fields));
-      const rec = await atCreate('submissions', fields);
-      console.log('Created record:', JSON.stringify(rec));
-      db.submissions.push(mapSubmission(rec));
+      console.log('Creating submission:', JSON.stringify(fields));
+      const created = await dbCreate('submissions', fields);
+      db.submissions.push(created);
       document.getElementById('success-title').textContent = 'Payroll Run Submitted!';
-      document.getElementById('success-msg').textContent   = `Pay period ${fmt(start)} – ${fmt(end)} received. Your accountant will review and process within 1–2 business days.`;
+      document.getElementById('success-msg').textContent   = `Pay period ${fmt(start)} - ${fmt(end)} received. Your accountant will review and process within 1-2 business days.`;
     }
   } catch(e) {
     console.error('SUBMIT ERROR:', e);
@@ -1927,7 +2055,7 @@ async function submitPayrollRun() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  EMPLOYEE FORM — VALIDATION HELPERS
+//  EMPLOYEE FORM
 // ══════════════════════════════════════════════════════════════════════════
 function showEmpStep(n) {
   for (let i=1;i<=4;i++) {
@@ -1984,10 +2112,10 @@ function validateStep2() {
   let ok = true;
   const inst=document.getElementById('emp-bank-inst').value, transit=document.getElementById('emp-bank-transit').value,
         acct=document.getElementById('emp-bank-acct').value, type=document.getElementById('emp-bank-type').value;
-  if (inst.length!==3)          { showErr('err-emp-bank-inst','emp-bank-inst');       ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
-  if (transit.length!==5)       { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
-  if (acct.length<7||acct.length>12){ showErr('err-emp-bank-acct','emp-bank-acct');  ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
-  if (!type)                    { showErr('err-emp-bank-type','emp-bank-type');        ok=false; } else clearErr('err-emp-bank-type','emp-bank-type');
+  if (inst.length!==3)           { showErr('err-emp-bank-inst','emp-bank-inst');       ok=false; } else clearErr('err-emp-bank-inst','emp-bank-inst');
+  if (transit.length!==5)        { showErr('err-emp-bank-transit','emp-bank-transit'); ok=false; } else clearErr('err-emp-bank-transit','emp-bank-transit');
+  if (acct.length<7||acct.length>12){ showErr('err-emp-bank-acct','emp-bank-acct');   ok=false; } else clearErr('err-emp-bank-acct','emp-bank-acct');
+  if (!type)                     { showErr('err-emp-bank-type','emp-bank-type');        ok=false; } else clearErr('err-emp-bank-type','emp-bank-type');
   if (!ok) { showToast('Please fix the banking details before continuing.', 'error'); return; }
   empFormData.banking = { inst, transit, acct: '****'+acct.slice(-3), type };
   showEmpStep(3);
@@ -2022,17 +2150,17 @@ function buildReview() {
     { label:'Email',            value:p.email,                                                ok:!!p.email },
     { label:'Date of Birth',    value:p.dob,                                                  ok:!!p.dob },
     { label:'Home Address',     value:`${p.address}, ${p.city} ${p.province} ${p.postal}`,   ok:!!(p.address&&p.city) },
-    { label:'Banking (masked)', value:`Institution ${b.inst} · Transit ${b.transit} · Acct ${b.acct} (${b.type})`, ok:!!(b.inst&&b.transit) },
+    { label:'Banking (masked)', value:`Institution ${b.inst} - Transit ${b.transit} - Acct ${b.acct} (${b.type})`, ok:!!(b.inst&&b.transit) },
     { label:'Start Date',       value:r.startDate,                                            ok:!!r.startDate },
     { label:'Job Title',        value:r.title,                                                ok:!!r.title },
-    { label:'Pay',              value:`${r.payType} — $${r.rate} · ${r.freq}`,               ok:!!(r.payType&&r.rate) },
+    { label:'Pay',              value:`${r.payType} - $${r.rate} - ${r.freq}`,               ok:!!(r.payType&&r.rate) },
     { label:'TD1 Federal',      value:`$${r.td1Fed}`,                                         ok:true },
     { label:'TD1 Provincial',   value:`$${r.td1Prov}`,                                        ok:true },
   ];
   document.getElementById('review-checklist').innerHTML = `<ul class="checklist">
     ${items.map(i=>`<li class="${i.ok&&i.value?'complete':'missing'}">
-      <span class="check-icon">${i.ok&&i.value?'✓':'⚠'}</span>
-      <div><strong>${i.label}:</strong> <span style="font-weight:400">${i.value||'— Missing'}</span></div>
+      <span class="check-icon">${i.ok&&i.value?'&#10003;':'&#9888;'}</span>
+      <div><strong>${i.label}:</strong> <span style="font-weight:400">${i.value||'- Missing'}</span></div>
     </li>`).join('')}</ul>`;
 }
 
@@ -2045,28 +2173,26 @@ async function submitNewEmployee() {
   const clientCode = codeById(currentClientId);
   const today = new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
 
-  showLoader('Saving employee…');
+  showLoader('Saving employee...');
   try {
-    // Create employee record
-    const empFields = {
+    const empData = {
       ClientCode: clientCode, First: p.first, Last: p.last, Title: r.title,
       Type: r.type, PayType: r.payType, Rate: r.rate, Banking: true, TD1: true,
       Status: 'active', StartDate: r.startDate
     };
-    const empRec = await atCreate('employees', empFields);
-    db.employees.push(mapEmployee(empRec));
+    const newEmp = await dbCreate('employees', empData);
+    db.employees.push(newEmp);
 
-    // Create submission record
-    const subFields = {
+    const subData = {
       SubType: 'employee', ClientCode: clientCode,
       EmpName: `${p.first} ${p.last}`, StartDate: r.startDate,
-      BankingInfo: '✓ Provided', TD1Info: '✓ Provided',
+      BankingInfo: 'Provided', TD1Info: 'Provided',
       Submitted: today, Status: 'new', Note: r.notes || ''
     };
-    const subRec = await atCreate('submissions', subFields);
-    db.submissions.push(mapSubmission(subRec));
+    const newSub = await dbCreate('submissions', subData);
+    db.submissions.push(newSub);
   } catch(e) {
-    showToast('Save failed — check your Airtable connection.', 'error', 5000);
+    showToast('Save failed - check your connection.', 'error', 5000);
     console.error(e); return;
   } finally { hideLoader(); }
 
@@ -2085,17 +2211,16 @@ function loadRoster() {
   tbody.innerHTML = '';
   if (sub) sub.textContent = `${emps.length} active employee${emps.length!==1?'s':''}`;
   if (!emps.length) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">👥</div><h4>No employees yet</h4><p>Add your first employee to get started.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">&#128101;</div><h4>No employees yet</h4><p>Add your first employee to get started.</p></div></td></tr>`;
     return;
   }
   emps.forEach(e => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${e.first} ${e.last}</strong></td>
-      <td>${e.title}</td>
+      <td><strong>${e.first} ${e.last}</strong></td><td>${e.title}</td>
       <td><span class="emp-type-badge badge-${e.type==='FT'?'ft':e.type==='PT'?'pt':'contract'}">${e.type}</span></td>
       <td>${e.payType==='hourly'?'$'+e.rate+'/hr':'$'+Number(e.rate).toLocaleString('en-CA')+'/yr'}</td>
-      <td><span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'✓ On file':'⚠ Missing'}</span></td>
+      <td><span class="status-badge ${e.banking?'status-done':'status-review'}">${e.banking?'On file':'Missing'}</span></td>
       <td><span class="status-badge status-done"><span class="status-dot"></span>Active</span></td>`;
     tbody.appendChild(tr);
   });
@@ -2109,28 +2234,28 @@ function loadHistory() {
   const tbody = document.getElementById('history-tbody');
   tbody.innerHTML = '';
   if (!subs.length) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">📁</div><h4>No submissions yet</h4><p>Your payroll submissions will appear here.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">&#128193;</div><h4>No submissions yet</h4><p>Your payroll submissions will appear here.</p></div></td></tr>`;
     return;
   }
   [...subs].reverse().forEach(s => {
     const tr = document.createElement('tr');
-    const type   = s.type==='payroll'?'📋 Payroll Run':'👤 New Employee';
-    const period = s.type==='payroll'?s.period:(s.empName+' · starts '+s.startDate);
+    const type   = s.type==='payroll'?'Payroll Run':'New Employee';
+    const period = s.type==='payroll'?s.period:(s.empName+' - starts '+s.startDate);
     const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
     const statusLbl = s.status==='done'?'Processed':s.status==='review'?'Under Review':'Received';
-    let actions = '—';
+    let actions = '-';
     if (s.type==='payroll') {
       if (s.locked) {
-        actions = '<span class="status-badge status-locked">🔒 Locked</span>';
+        actions = '<span class="status-badge status-locked">Locked</span>';
       } else {
         const editedNote = s.lastEdited ? `<div class="text-small text-muted" style="margin-top:3px">Edited ${s.lastEdited}</div>` : '';
-        actions = `<button class="btn btn-sm btn-outline" onclick="editPayrollRun('${s.id}')">✏️ Edit</button>${editedNote}`;
+        actions = `<button class="btn btn-sm btn-outline" onclick="editPayrollRun('${s.id}')">Edit</button>${editedNote}`;
       }
     }
     tr.innerHTML = `
       <td>${type}</td><td>${period}</td><td>${s.submitted}</td>
       <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
-      <td style="color:var(--ink-muted);font-size:13px">${s.note||'—'}</td>
+      <td style="color:var(--ink-muted);font-size:13px">${s.note||'-'}</td>
       <td>${actions}</td>`;
     tbody.appendChild(tr);
   });
@@ -2156,21 +2281,21 @@ function loadAdminDashboard() {
   const ptbody = document.getElementById('admin-payroll-tbody');
   ptbody.innerHTML = '';
   if (!payrolls.length) {
-    ptbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">📋</div><h4>No payroll runs yet</h4></div></td></tr>`;
+    ptbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-state-icon">&#128203;</div><h4>No payroll runs yet</h4></div></td></tr>`;
   } else {
     payrolls.forEach(s => {
       const client = db.clients.find(c=>c.code===s.clientCode);
       const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
       const statusLbl = s.status==='done'?'Processed':s.status==='review'?'Flagged':'New';
-      const lockBtn   = s.locked
-        ? `<button class="btn btn-sm" style="background:rgba(12,122,108,.1);color:var(--teal);border:1px solid rgba(12,122,108,.25)" onclick="lockSubmission('${s.id}')">🔓 Unlock</button>`
-        : `<button class="btn btn-sm" style="background:rgba(192,57,43,.1);color:var(--red);border:1px solid rgba(192,57,43,.2)" onclick="lockSubmission('${s.id}')">🔒 Lock</button>`;
-      const editedBadge = s.lastEdited ? `<span class="status-badge" style="background:rgba(201,136,42,.1);color:var(--gold-dk);margin-left:4px;font-size:10px">✏ Edited</span>` : '';
+      const lockBtn = s.locked
+        ? `<button class="btn btn-sm" style="background:rgba(12,122,108,.1);color:var(--teal);border:1px solid rgba(12,122,108,.25)" onclick="lockSubmission('${s.id}')">Unlock</button>`
+        : `<button class="btn btn-sm" style="background:rgba(192,57,43,.1);color:var(--red);border:1px solid rgba(192,57,43,.2)" onclick="lockSubmission('${s.id}')">Lock</button>`;
+      const editedBadge = s.lastEdited ? `<span class="status-badge" style="background:rgba(201,136,42,.1);color:var(--gold-dk);margin-left:4px;font-size:10px">Edited</span>` : '';
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><strong>${client?.name||'—'}</strong></td>
+        <td><strong>${client?.name||'-'}</strong></td>
         <td>${s.period}${editedBadge}</td><td>${s.submitted}</td><td>${s.empCount}</td>
-        <td>${s.flags>0?`<span class="status-badge status-review">⚠ ${s.flags} flag(s)</span>`:'<span style="color:var(--teal);font-weight:600">✓ Clean</span>'}</td>
+        <td>${s.flags>0?`<span class="status-badge status-review">&#9888; ${s.flags} flag(s)</span>`:'<span style="color:var(--teal);font-weight:600">Clean</span>'}</td>
         <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${statusLbl}</span></td>
         <td style="white-space:nowrap">
           <button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Done</button>
@@ -2181,20 +2306,20 @@ function loadAdminDashboard() {
     });
   }
 
-  // Employee tab
+  // Employees tab
   const etbody = document.getElementById('admin-emp-tbody');
   etbody.innerHTML = '';
   if (!newEmps.length) {
-    etbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">👤</div><h4>No employee submissions yet</h4></div></td></tr>`;
+    etbody.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="empty-state-icon">&#128100;</div><h4>No employee submissions yet</h4></div></td></tr>`;
   } else {
     newEmps.forEach(s => {
       const client = db.clients.find(c=>c.code===s.clientCode);
       const statusCls = s.status==='done'?'status-done':s.status==='review'?'status-review':'status-new';
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><strong>${client?.name||'—'}</strong></td><td>${s.empName}</td><td>${s.startDate||'—'}</td>
-        <td><span class="status-badge ${s.banking?.includes('✓')?'status-done':'status-review'}">${s.banking||'—'}</span></td>
-        <td><span class="status-badge ${s.td1?.includes('✓')?'status-done':'status-review'}">${s.td1||'—'}</span></td>
+        <td><strong>${client?.name||'-'}</strong></td><td>${s.empName}</td><td>${s.startDate||'-'}</td>
+        <td><span class="status-badge ${s.banking?.includes('Provided')?'status-done':'status-review'}">${s.banking||'-'}</span></td>
+        <td><span class="status-badge ${s.td1?.includes('Provided')?'status-done':'status-review'}">${s.td1||'-'}</span></td>
         <td>${s.submitted}</td>
         <td><span class="status-badge ${statusCls}"><span class="status-dot"></span>${s.status==='done'?'Set Up':'New'}</span></td>
         <td><button class="btn btn-sm btn-teal" onclick="markDone('${s.id}')">Mark Set Up</button></td>`;
@@ -2228,10 +2353,10 @@ function switchTab(id) {
 async function markDone(subId) {
   const s = db.submissions.find(x=>x.id===subId);
   if (!s) return;
-  showLoader('Updating…');
+  showLoader('Updating...');
   try {
-    await atUpdate('submissions', s._rid, { Status: 'done', Note: 'Processed ✓' });
-    s.status='done'; s.note='Processed ✓';
+    await dbUpdate('submissions', s._rid, { Status: 'done', Note: 'Processed' });
+    s.status='done'; s.note='Processed';
     loadAdminDashboard(); showToast('Marked as done!', 'success');
   } catch(e) { showToast('Update failed.', 'error'); console.error(e); }
   finally { hideLoader(); }
@@ -2247,7 +2372,7 @@ async function lockSubmission(subId) {
   if (!confirm(msg)) return;
   showLoader(willLock ? 'Locking...' : 'Unlocking...');
   try {
-    await atUpdate('submissions', s._rid, { Locked: willLock });
+    await dbUpdate('submissions', s._rid, { Locked: willLock });
     s.locked = willLock;
     loadAdminDashboard();
     showToast(willLock ? 'Submission locked.' : 'Submission unlocked - client can edit again.', 'success');
@@ -2282,8 +2407,7 @@ function exportAll() {
 
 function downloadCSV(csv, filename) {
   const clean = csv.replace(/[\u2013\u2014]/g, '-');
-  const bom = '\uFEFF';
-  const blob = new Blob([bom + clean], {type:'text/csv;charset=utf-8;'});
+  const blob = new Blob(['\uFEFF' + clean], {type:'text/csv;charset=utf-8;'});
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
   a.click(); URL.revokeObjectURL(a.href);
 }
@@ -2295,7 +2419,7 @@ function loadManageClients() {
   const tbody = document.getElementById('clients-manage-tbody');
   tbody.innerHTML = '';
   if (!db.clients.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-state-icon">🏢</div><h4>No clients yet</h4></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">&#127970;</div><h4>No clients yet</h4></div></td></tr>`;
     return;
   }
   db.clients.forEach(c => {
@@ -2314,8 +2438,7 @@ function loadManageClients() {
           <button class="btn btn-sm btn-teal" onclick="changeClientCode('${c.id}')">Save</button>
         </div>
       </td>
-      <td><button class="btn btn-sm btn-danger" onclick="removeClient('${c.id}')">Remove</button></td>
-    `;
+      <td><button class="btn btn-sm btn-danger" onclick="removeClient('${c.id}')">Remove</button></td>`;
     tbody.appendChild(tr);
   });
 }
@@ -2324,13 +2447,13 @@ async function addClient() {
   const name = document.getElementById('new-client-name').value.trim();
   const code = document.getElementById('new-client-code').value.trim().toUpperCase();
   const freq = document.getElementById('new-client-freq').value;
-  if (!name||!code)              { showToast('Company name and access code are required.', 'error'); return; }
+  if (!name||!code)               { showToast('Company name and access code are required.', 'error'); return; }
   if (!/^[A-Z0-9]+$/.test(code)) { showToast('Access code must be letters and numbers only.', 'error'); return; }
   if (db.clients.find(c=>c.code===code)) { showToast('That access code is already in use.', 'error'); return; }
-  showLoader('Adding client…');
+  showLoader('Adding client...');
   try {
-    const rec = await atCreate('clients', { Name: name, Code: code, Freq: freq });
-    db.clients.push(mapClient(rec));
+    const created = await dbCreate('clients', { Name: name, Code: code, Freq: freq });
+    db.clients.push(created);
     document.getElementById('new-client-name').value='';
     document.getElementById('new-client-code').value='';
     const msg = document.getElementById('add-client-msg');
@@ -2351,18 +2474,16 @@ async function changeClientCode(clientId) {
   if (!confirm('Change access code for ' + c.name + ' from ' + c.code + ' to ' + newCode + '?')) return;
   showLoader('Updating code...');
   try {
-    // Update client record
-    await atUpdate('clients', c._rid, { Code: newCode });
+    await dbUpdate('clients', c._rid, { Code: newCode });
     const oldCode = c.code;
     c.code = newCode;
-    // Update all employees and submissions that reference this client
     const empUpdates = db.employees.filter(e=>e.clientCode===oldCode).map(e => {
       e.clientCode = newCode;
-      return atUpdate('employees', e._rid, { ClientCode: newCode });
+      return dbUpdate('employees', e._rid, { ClientCode: newCode });
     });
     const subUpdates = db.submissions.filter(s=>s.clientCode===oldCode).map(s => {
       s.clientCode = newCode;
-      return atUpdate('submissions', s._rid, { ClientCode: newCode });
+      return dbUpdate('submissions', s._rid, { ClientCode: newCode });
     });
     await Promise.all([...empUpdates, ...subUpdates]);
     if (input) input.value = '';
@@ -2375,14 +2496,14 @@ async function changeClientCode(clientId) {
 async function removeClient(id) {
   const c = db.clients.find(x=>x.id===id);
   if (!confirm(`Remove ${c?.name}? Their employees and submissions will also be removed.`)) return;
-  showLoader('Removing client…');
+  showLoader('Removing client...');
   try {
     const empsToRemove = db.employees.filter(e=>e.clientCode===c.code);
     const subsToRemove = db.submissions.filter(s=>s.clientCode===c.code);
     await Promise.all([
-      atDelete('clients', c._rid),
-      ...empsToRemove.map(e=>atDelete('employees', e._rid)),
-      ...subsToRemove.map(s=>atDelete('submissions', s._rid))
+      dbDelete('clients', c._rid),
+      ...empsToRemove.map(e=>dbDelete('employees', e._rid)),
+      ...subsToRemove.map(s=>dbDelete('submissions', s._rid))
     ]);
     db.clients     = db.clients.filter(x=>x.id!==id);
     db.employees   = db.employees.filter(e=>e.clientCode!==c.code);
